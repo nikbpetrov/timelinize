@@ -1,13 +1,17 @@
 package facebook
 
 import (
+	"context"
 	"fmt"
+	"io"
+	"io/fs"
 	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/timelinize/timelinize/datasources/media"
 	"github.com/timelinize/timelinize/timeline"
 	"go.uber.org/zap"
 )
@@ -173,8 +177,23 @@ func (m fbArchiveMedia) fillItem(item *timeline.Item, d timeline.DirEntry, postT
 	if item.Content.Data == nil {
 		item.Content = timeline.ItemData{
 			Filename: path.Base(m.URI),
-			// don't set the Data func here, because it might not be in this archive at all;
-			// we traverse media folder separately and use retrieval key to fill in the data file
+		}
+		// The media file may live in a different archive of a multi-part export, in which case a
+		// separate media walk fills the data in later via the retrieval key. But when the file is
+		// right here (always the case for message attachments, which no media walk covers), read
+		// it directly so the item does not end up without data.
+		if info, err := fs.Stat(d.FS, m.URI); err == nil && !info.IsDir() {
+			uri := m.URI
+			item.Content.Size = uint64(info.Size()) //nolint:gosec // file sizes are non-negative
+			item.Content.Data = func(_ context.Context) (io.ReadCloser, error) {
+				return d.FS.Open(uri)
+			}
+			if _, err := media.ExtractAllMetadata(logger, d.FS, uri, item, timeline.MetaMergeAppend); err != nil {
+				logger.Debug("extracting metadata from archive media", zap.String("file", uri), zap.Error(err))
+			}
+		} else if logger != nil {
+			logger.Warn("media file referenced by archive not found in this archive; expecting it in another part",
+				zap.String("uri", m.URI))
 		}
 	}
 
@@ -250,15 +269,12 @@ type fbMessengerThread struct {
 		Name string `json:"name"`
 	} `json:"participants"`
 	Messages []struct {
-		SenderName  string `json:"sender_name"`
-		TimestampMS int64  `json:"timestamp_ms"`
-		IsUnsent    bool   `json:"is_unsent,omitempty"`
-		Content     string `json:"content,omitempty"`
-		Share       struct {
-			Link      string `json:"link"`
-			ShareText string `json:"share_text"`
-		} `json:"share,omitempty"`
-		Reactions []struct {
+		SenderName  string  `json:"sender_name"`
+		TimestampMS int64   `json:"timestamp_ms"`
+		IsUnsent    bool    `json:"is_unsent,omitempty"`
+		Content     string  `json:"content,omitempty"`
+		Share       fbShare `json:"share,omitempty"`
+		Reactions   []struct {
 			Reaction string `json:"reaction"`
 			Actor    string `json:"actor"`
 		} `json:"reactions,omitempty"`

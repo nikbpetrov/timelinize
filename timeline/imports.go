@@ -448,6 +448,10 @@ type ImportParams struct {
 	// as provided by NewOptions.
 	DataSourceOptions any `json:"data_source_options,omitempty"`
 
+	// If non-nil and enabled, data sources may resolve/download links they
+	// encounter (see LinkFetchOptions). CacheDir is always set when non-nil.
+	LinkFetch *LinkFetchOptions `json:"link_fetch,omitempty"`
+
 	// TODO: WIP...
 	// // Maximum number of items to list; useful
 	// // for previews. Data sources should not

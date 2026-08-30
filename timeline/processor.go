@@ -21,6 +21,7 @@ package timeline
 import (
 	"context"
 	"encoding/json"
+	"path/filepath"
 	"runtime/debug"
 	"sync/atomic"
 
@@ -80,6 +81,13 @@ func (p processor) process(ctx context.Context, dirEntry DirEntry, dsCheckpoint 
 		Timeframe:         p.ij.ProcessingOptions.Timeframe,
 		Checkpoint:        dsCheckpoint,
 		DataSourceOptions: p.dsOpt,
+	}
+	if lf := p.ij.ProcessingOptions.LinkFetch; lf != nil && lf.Enabled {
+		lfCopy := *lf
+		if lfCopy.CacheDir == "" {
+			lfCopy.CacheDir = filepath.Join(p.tl.repoDir, "linkfetch")
+		}
+		params.LinkFetch = &lfCopy
 	}
 
 	// if enabled, estimate the units of work to be completed before starting the actual import
@@ -159,6 +167,9 @@ type ProcessingOptions struct {
 
 	// TODO: WIP (Should this be in importjob or processingoptions?)
 	Interactive *InteractiveImport `json:"interactive,omitempty"`
+
+	// Optional resolution/download of links encountered by data sources.
+	LinkFetch *LinkFetchOptions `json:"link_fetch,omitempty"`
 
 	// How many items to process in one database transaction. This is a minimum value,
 	// not a maximum, due to the recursive nature of graphs. (Hopefully data sources

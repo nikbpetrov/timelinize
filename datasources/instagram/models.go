@@ -145,9 +145,11 @@ type instaProfileData struct {
 }
 
 type instaStories struct {
-	IgStories []struct {
-		URI               string `json:"uri"`
-		CreationTimestamp int64  `json:"creation_timestamp"`
-		Title             string `json:"title"`
-	} `json:"ig_stories"`
+	IgStories []instaStory `json:"ig_stories"`
+}
+
+type instaStory struct {
+	URI               string `json:"uri"`
+	CreationTimestamp int64  `json:"creation_timestamp"`
+	Title             string `json:"title"`
 }

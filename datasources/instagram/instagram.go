@@ -27,6 +27,7 @@ import (
 	"io"
 	"io/fs"
 	"path"
+	"sort"
 	"time"
 
 	"github.com/timelinize/timelinize/datasources/facebook"
@@ -71,7 +72,7 @@ func (Client) Recognize(_ context.Context, dirEntry timeline.DirEntry, _ timelin
 }
 
 // FileImport imports data from the file or folder.
-func (c *Client) FileImport(_ context.Context, dirEntry timeline.DirEntry, params timeline.ImportParams) error {
+func (c *Client) FileImport(ctx context.Context, dirEntry timeline.DirEntry, params timeline.ImportParams) error {
 	dsOpt, _ := params.DataSourceOptions.(*Options)
 	if dsOpt == nil {
 		dsOpt = new(Options)
@@ -186,26 +187,14 @@ func (c *Client) FileImport(_ context.Context, dirEntry timeline.DirEntry, param
 		if dsOpt.StoriesLimited(i) {
 			break
 		}
-		params.Pipeline <- &timeline.Graph{
-			Item: &timeline.Item{
-				Timestamp:            time.Unix(story.CreationTimestamp, 0).UTC(),
-				Owner:                owner,
-				IntermediateLocation: story.URI,
-				Content: timeline.ItemData{
-					Filename: path.Base(story.URI),
-					Data: func(_ context.Context) (io.ReadCloser, error) {
-						return dirEntry.FS.Open(story.URI)
-					},
-				},
-				Metadata: timeline.Metadata{
-					"Caption": facebook.FixString(story.Title),
-				},
-			},
-		}
+		params.Pipeline <- &timeline.Graph{Item: storyItem(dirEntry, owner, story)}
 	}
 
 	// messages
-	err = facebook.GetMessages("instagram", dirEntry, params, dsOpt.Filters)
+	err = facebook.GetMessages(ctx, "instagram", dirEntry, params, dsOpt.Filters, facebook.MessageContext{
+		OwnerUsername: personalInfo.Username.Value,
+		OwnStory:      storyIdx.lookup(dirEntry, owner),
+	})
 	if err != nil {
 		return err
 	}
@@ -295,6 +284,63 @@ func (c *Client) getStoryIndex(fsys fs.FS, logger *zap.Logger) (instaStories, er
 	}
 
 	return idx, nil
+}
+
+// storyItem builds the item for one of the owner's stories.
+func storyItem(dirEntry timeline.DirEntry, owner timeline.Entity, story instaStory) *timeline.Item {
+	return &timeline.Item{
+		Timestamp:            time.Unix(story.CreationTimestamp, 0).UTC(),
+		Owner:                owner,
+		IntermediateLocation: story.URI,
+		Content: timeline.ItemData{
+			Filename: path.Base(story.URI),
+			Data: func(_ context.Context) (io.ReadCloser, error) {
+				return dirEntry.FS.Open(story.URI)
+			},
+		},
+		Metadata: timeline.Metadata{
+			"Caption": facebook.FixString(story.Title),
+		},
+	}
+}
+
+// ownStoryMatchTolerance is how far the time decoded from a story's media ID may be
+// from the story's creation_timestamp in the export (observed: 1-90 s, ID time first).
+const ownStoryMatchTolerance = 5 * time.Minute
+
+// lookup returns a function that finds the owner's story published nearest to a time,
+// building an item identical to the one emitted for the story so the pipeline matches it.
+func (idx instaStories) lookup(dirEntry timeline.DirEntry, owner timeline.Entity) func(time.Time) *timeline.Item {
+	stories := make([]instaStory, len(idx.IgStories))
+	copy(stories, idx.IgStories)
+	sort.Slice(stories, func(i, j int) bool { return stories[i].CreationTimestamp < stories[j].CreationTimestamp })
+	return func(t time.Time) *timeline.Item {
+		if len(stories) == 0 {
+			return nil
+		}
+		sec := t.Unix()
+		i := sort.Search(len(stories), func(i int) bool { return stories[i].CreationTimestamp >= sec })
+		best := -1
+		for _, j := range []int{i - 1, i} {
+			if j < 0 || j >= len(stories) {
+				continue
+			}
+			if best == -1 || abs(stories[j].CreationTimestamp-sec) < abs(stories[best].CreationTimestamp-sec) {
+				best = j
+			}
+		}
+		if best == -1 || abs(stories[best].CreationTimestamp-sec) > int64(ownStoryMatchTolerance.Seconds()) {
+			return nil
+		}
+		return storyItem(dirEntry, owner, stories[best])
+	}
+}
+
+func abs(n int64) int64 {
+	if n < 0 {
+		return -n
+	}
+	return n
 }
 
 const (

@@ -71,6 +71,10 @@ type Config struct {
 	// Default: true
 	ResumeJobs *bool `json:"resume_jobs,omitempty"`
 
+	// Defaults for resolving/downloading links found by data sources
+	// (used when an import job does not specify its own link_fetch options).
+	LinkFetch *timeline.LinkFetchOptions `json:"link_fetch,omitempty"`
+
 	log *zap.Logger
 }
 

@@ -19,6 +19,7 @@
 package facebook
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -27,12 +28,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/timelinize/timelinize/internal/linkfetch"
 	"github.com/timelinize/timelinize/timeline"
+	"go.uber.org/zap"
 )
 
 // GetMessages imports Messenger/Instagram DM threads. filters may be
 // zero-valued to import everything.
-func GetMessages(dsName string, dirEntry timeline.DirEntry, params timeline.ImportParams, filters Filters) error {
+func GetMessages(ctx context.Context, dsName string, dirEntry timeline.DirEntry, params timeline.ImportParams, filters Filters, mctx MessageContext) error {
 	// figure out which archive version we're working with
 	messagesInboxPrefix := messagesPrefix2025
 	if _, err := fs.Stat(dirEntry.FS, messagesInboxPrefix); errors.Is(err, fs.ErrNotExist) {
@@ -44,6 +47,24 @@ func GetMessages(dsName string, dirEntry timeline.DirEntry, params timeline.Impo
 
 	// messages imported per thread folder (threads may span several message_N.json files)
 	threadMsgCounts := make(map[string]int)
+
+	// share-link statistics for the end-of-import summary
+	stats := shareStats{byKind: make(map[string]int)}
+
+	// optional link resolver (downloads shared reels/posts with the user's cookies)
+	var resolver *linkfetch.Resolver
+	if params.LinkFetch != nil && params.LinkFetch.Enabled {
+		var err error
+		resolver, err = linkfetch.New(*params.LinkFetch, params.Log.Named("link_fetch"))
+		if err != nil {
+			return fmt.Errorf("setting up link fetching: %w", err)
+		}
+		params.Log.Info("link fetching enabled",
+			zap.String("cache_dir", params.LinkFetch.CacheDir),
+			zap.Int("max_per_import", params.LinkFetch.MaxPerImport),
+			zap.Int("delay_ms", params.LinkFetch.DelayMS),
+			zap.Bool("cookies", params.LinkFetch.Cookies[dsName] != ""))
+	}
 
 	for _, messageSubfolder := range []string{
 		"inbox",
@@ -86,6 +107,15 @@ func GetMessages(dsName string, dirEntry timeline.DirEntry, params timeline.Impo
 				}
 				threadMsgCounts[threadPath]++
 
+				if err := ctx.Err(); err != nil {
+					return err
+				}
+				if params.Continue != nil {
+					if err := params.Continue(); err != nil {
+						return err
+					}
+				}
+
 				senderName := FixString(msg.SenderName)
 				sender := timeline.Entity{
 					Name: senderName,
@@ -99,6 +129,13 @@ func GetMessages(dsName string, dirEntry timeline.DirEntry, params timeline.Impo
 				}
 				msgText := FixString(msg.Content)
 				msgTimestamp := time.UnixMilli(msg.TimestampMS).UTC()
+
+				// Meta substitutes "<Name> sent an attachment." for messages whose real
+				// content is the attachment or share; that is not something the sender typed
+				if isAttachmentPlaceholder(msgText) {
+					msgText = ""
+					stats.placeholdersDropped++
+				}
 
 				var attachments []*timeline.Item
 
@@ -157,17 +194,54 @@ func GetMessages(dsName string, dirEntry timeline.DirEntry, params timeline.Impo
 					}
 					attachments = append(attachments, attached)
 				}
-				if msg.Share.Link != "" {
-					if !strings.Contains(msgText, msg.Share.Link) {
-						msgText += "\n\n" + msg.Share.Link
-						if msg.Share.ShareText != "" {
-							msgText += "\n" + FixString(msg.Share.ShareText)
+				// A shared post/reel/story/profile becomes its own bookmark item attached to the
+				// message (or, for the owner's own story, a "quotes" edge to the imported story),
+				// never text on the message: share_text is the *other* author's caption.
+				var bookmark, quoted *timeline.Item
+				var fetchedMedia []*timeline.Item
+				if !msg.Share.isEmpty() {
+					canonical := canonicalShareURL(msg.Share.url(dsName))
+					kind := classifyShareURL(canonical)
+					status := shareStatusUnresolved
+					if kind == shareKindStory {
+						status = shareStatusExpired // stories live 24 h; only the owner's own are in the export
+						if user, mediaID, ok := storyLink(canonical); ok && mctx.OwnStory != nil &&
+							mctx.OwnerUsername != "" && user == mctx.OwnerUsername {
+							quoted = mctx.OwnStory(instagramMediaIDTime(mediaID))
 						}
-					} else if msg.Share.ShareText != "" {
-						msgText += "\n\n" + FixString(msg.Share.ShareText)
 					}
+					if quoted != nil {
+						stats.ownStoriesMatched++
+					} else {
+						bookmark = msg.Share.bookmarkItem(dsName, canonical, kind, status, msgTimestamp)
+						if resolver != nil && status != shareStatusExpired {
+							fetched, err := resolveShare(ctx, resolver, dsName, canonical, kind, msgTimestamp)
+							if err != nil {
+								return err
+							}
+							bookmark.Metadata["Status"] = fetched.Status
+							if fetched.Status == linkfetch.StatusResolved {
+								bookmark.Metadata["Fetched with"] = fetched.Backend
+							}
+							if fetched.Error != "" {
+								bookmark.Metadata["Fetch error"] = fetched.Error
+							}
+							status = fetched.Status
+							fetchedMedia = fetched.Items
+						}
+					}
+					stats.byKind[kind]++
+					params.Log.Debug("share link in message",
+						zap.String("thread", threadPath),
+						zap.Time("timestamp", msgTimestamp),
+						zap.String("url", canonical),
+						zap.String("kind", kind),
+						zap.String("status", status),
+						zap.Bool("own_story_matched", quoted != nil))
 				}
 
+				// keep only what the sender actually typed (a message may legitimately
+				// contain the link in its text too; that is the sender's, so it stays)
 				msgText = strings.TrimSpace(msgText)
 
 				var item *timeline.Item
@@ -183,6 +257,15 @@ func GetMessages(dsName string, dirEntry timeline.DirEntry, params timeline.Impo
 					}
 				case len(attachments) > 0:
 					item, attachments = attachments[0], attachments[1:]
+				case bookmark != nil || quoted != nil:
+					// the message consists solely of a share: represent it as an empty message
+					// (kept by the pipeline because it has relationships) so it still shows up
+					// in the conversation at the right time, owned by the sender
+					item = &timeline.Item{
+						Classification: timeline.ClassMessage,
+						Timestamp:      msgTimestamp,
+						Owner:          sender,
+					}
 				default:
 					// found an empty message; I've seen this happen rarely,
 					// like if a message IsUnsent; no content, so skip
@@ -193,6 +276,16 @@ func GetMessages(dsName string, dirEntry timeline.DirEntry, params timeline.Impo
 
 				for _, attach := range attachments {
 					ig.ToItem(timeline.RelAttachment, attach)
+				}
+				if bookmark != nil {
+					bg := &timeline.Graph{Item: bookmark}
+					for _, media := range fetchedMedia {
+						bg.ToItem(timeline.RelAttachment, media)
+					}
+					ig.Edges = append(ig.Edges, timeline.Relationship{Relation: timeline.RelAttachment, To: bg})
+				}
+				if quoted != nil {
+					ig.ToItem(timeline.RelQuotes, quoted)
 				}
 				for _, recipient := range thread.sentTo(senderName, dsName) {
 					ig.ToEntity(timeline.RelSent, recipient)
@@ -222,5 +315,22 @@ func GetMessages(dsName string, dirEntry timeline.DirEntry, params timeline.Impo
 		}
 	}
 
+	summary := []zap.Field{
+		zap.String("data_source", dsName),
+		zap.Any("by_kind", stats.byKind),
+		zap.Int("placeholders_dropped", stats.placeholdersDropped),
+		zap.Int("own_stories_matched", stats.ownStoriesMatched),
+	}
+	if resolver != nil {
+		summary = append(summary, zap.Any("link_fetch", resolver.Stats()))
+	}
+	params.Log.Info("messages: share links summary", summary...)
+
 	return nil
+}
+
+type shareStats struct {
+	byKind              map[string]int
+	placeholdersDropped int
+	ownStoriesMatched   int
 }

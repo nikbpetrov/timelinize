@@ -126,35 +126,47 @@ func (a Archive) FileImport(ctx context.Context, dirEntry timeline.DirEntry, par
 		}
 	}
 
-	// album media
-	if err := a.processAlbumFiles(ctx, dirEntry, params, []string{
-		year2024AlbumPrefix,
-	}); err != nil {
-		return fmt.Errorf("processing album folder: %w", err)
+	// The standalone media walks import every file under the media/album folders (needed for
+	// multi-part exports and for media no manifest references). When the dev filters limit
+	// posts, skip them: the posts' own media is read directly by fillItem, and walking 500+
+	// files defeats the purpose of a quick filtered import.
+	if dsOpt.Filters.MaxPosts > 0 {
+		params.Log.Info("posts limited by filter; skipping album and post media walks")
+	} else {
+		// album media
+		if err := a.processAlbumFiles(ctx, dirEntry, params, []string{
+			year2024AlbumPrefix,
+		}); err != nil {
+			return fmt.Errorf("processing album folder: %w", err)
+		}
+
+		// post media (done separately since they may not be in the same archive as the JSON manifest)
+		if err := a.processPostMedia(ctx, dirEntry, params, []string{
+			year2024PostMediaPrefix,
+			"your_activity_across_facebook", // also found this in a year 2024 archive, full of media files
+		}); err != nil {
+			return fmt.Errorf("processing post media: %w", err)
+		}
 	}
 
-	// post media (done separately since they may not be in the same archive as the JSON manifest)
-	if err := a.processPostMedia(ctx, dirEntry, params, []string{
-		year2024PostMediaPrefix,
-		"your_activity_across_facebook", // also found this in a year 2024 archive, full of media files
-	}); err != nil {
-		return fmt.Errorf("processing post media: %w", err)
-	}
+	if dsOpt.Filters.MaxPosts > 0 {
+		params.Log.Info("posts limited by filter; skipping uncategorized photos and videos")
+	} else {
+		// uncategorized photos
+		if err := a.processPhotosOrVideos(ctx, dirEntry, params, []string{
+			pre2024YourUncategorizedPhotosPath,
+			year2024YourUncategorizedPhotosPath,
+		}, new(fbYourUncategorizedPhotos)); err != nil {
+			return fmt.Errorf("processing uncategorized photos: %w", err)
+		}
 
-	// uncategorized photos
-	if err := a.processPhotosOrVideos(ctx, dirEntry, params, []string{
-		pre2024YourUncategorizedPhotosPath,
-		year2024YourUncategorizedPhotosPath,
-	}, new(fbYourUncategorizedPhotos)); err != nil {
-		return fmt.Errorf("processing uncategorized photos: %w", err)
-	}
-
-	// uncategorized videos
-	if err := a.processPhotosOrVideos(ctx, dirEntry, params, []string{
-		pre2024YourVideosPath,
-		year2024YourVideosPath,
-	}, new(fbYourVideos)); err != nil {
-		return fmt.Errorf("processing videos: %w", err)
+		// uncategorized videos
+		if err := a.processPhotosOrVideos(ctx, dirEntry, params, []string{
+			pre2024YourVideosPath,
+			year2024YourVideosPath,
+		}, new(fbYourVideos)); err != nil {
+			return fmt.Errorf("processing videos: %w", err)
+		}
 	}
 
 	// tagged places
@@ -172,7 +184,7 @@ func (a Archive) FileImport(ctx context.Context, dirEntry timeline.DirEntry, par
 	}
 
 	// messages
-	err := GetMessages("facebook", dirEntry, params, dsOpt.Filters)
+	err := GetMessages(ctx, "facebook", dirEntry, params, dsOpt.Filters, MessageContext{OwnerUsername: dsOpt.Username})
 	if err != nil {
 		return err
 	}
@@ -211,13 +223,13 @@ func (a Archive) processPostsFile(ctx context.Context, d timeline.DirEntry, file
 				Data: timeline.StringData(postText),
 			},
 			Metadata: timeline.Metadata{
-				"Title": post.Title,
+				"Title": FixString(post.Title),
 			},
 		}
 		ig := &timeline.Graph{Item: item}
 
 		const nameMatchIndex = 1
-		if matches := wroteOnOtherTimelineRegex.FindStringSubmatch(post.Title); len(matches) == nameMatchIndex+1 {
+		if matches := wroteOnOtherTimelineRegex.FindStringSubmatch(FixString(post.Title)); len(matches) == nameMatchIndex+1 {
 			ig.ToEntity(timeline.RelSent, &timeline.Entity{
 				Name: matches[1],
 				Attributes: []timeline.Attribute{
@@ -267,7 +279,7 @@ func (a Archive) processPostsFile(ctx context.Context, d timeline.DirEntry, file
 
 					address := timeline.Attribute{
 						Name:  "address",
-						Value: attachment.Place.Address,
+						Value: FixString(attachment.Place.Address),
 					}
 					if attachment.Place.Coordinate.Latitude != 0 && attachment.Place.Coordinate.Longitude != 0 {
 						address.Latitude = &attachment.Place.Coordinate.Latitude
@@ -276,7 +288,7 @@ func (a Archive) processPostsFile(ctx context.Context, d timeline.DirEntry, file
 
 					place := &timeline.Entity{
 						Type:       timeline.EntityPlace,
-						Name:       attachment.Place.Name,
+						Name:       FixString(attachment.Place.Name),
 						Attributes: []timeline.Attribute{address},
 					}
 					ig.ToEntity(timeline.RelAttachment, place)
@@ -531,7 +543,7 @@ func (a Archive) processTaggedPlaces(ctx context.Context, tlDirEntry timeline.Di
 			for _, label := range taggedPlace.LabelValues {
 				switch label.Label {
 				case "Place name":
-					place.Name = label.Value
+					place.Name = FixString(label.Value)
 				case "Visit time":
 					visitItem.Timestamp = time.Unix(int64(label.TimestampValue), 0).UTC()
 				case "Name of application used to tag this place":
@@ -601,7 +613,7 @@ func (a Archive) processCheckins(ctx context.Context, tlDirEntry timeline.DirEnt
 			for _, label := range checkIn.LabelValues {
 				switch label.Label {
 				case "Message":
-					visitItem.Content.Data = timeline.StringData(strings.TrimSpace(label.Value))
+					visitItem.Content.Data = timeline.StringData(strings.TrimSpace(FixString(label.Value)))
 				case "Place tags":
 					for _, dictLabel := range label.Dict {
 						switch dictLabel.Label {
@@ -620,10 +632,10 @@ func (a Archive) processCheckins(ctx context.Context, tlDirEntry timeline.DirEnt
 						case "Address":
 							place.Attributes = append(place.Attributes, timeline.Attribute{
 								Name:  "address",
-								Value: strings.TrimSpace(dictLabel.Value),
+								Value: strings.TrimSpace(FixString(dictLabel.Value)),
 							})
 						case "Name":
-							place.Name = strings.TrimSpace(dictLabel.Value)
+							place.Name = strings.TrimSpace(FixString(dictLabel.Value))
 						}
 					}
 				}

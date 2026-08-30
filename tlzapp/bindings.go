@@ -768,6 +768,16 @@ func (app App) Import(params ImportParameters) (uint64, error) {
 	if params.Job.ProcessingOptions.Interactive != nil {
 		scheduled = time.Time{}
 	}
+	// link fetching: the job may enable/tune it, the app config supplies defaults (cookies, delays...)
+	app.cfg.RLock()
+	lfDefaults := app.cfg.LinkFetch
+	app.cfg.RUnlock()
+	if params.Job.ProcessingOptions.LinkFetch == nil && lfDefaults != nil {
+		lfCopy := *lfDefaults
+		params.Job.ProcessingOptions.LinkFetch = &lfCopy
+	} else {
+		params.Job.ProcessingOptions.LinkFetch.FillDefaults(lfDefaults)
+	}
 	return tl.CreateJob(params.Job, scheduled, 0, 0, 0)
 }
 
