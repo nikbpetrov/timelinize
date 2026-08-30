@@ -99,7 +99,7 @@ No calls, no system events, no shares in this format (they arrive as `text`/`lin
 
 ## 6. Test/dev restructuring (messages only)
 
-- `testdata/meta/cases.json` → split into **`testdata/meta/messages.json`** (active) and `testdata/meta/posts.json`
+- ✔ `testdata/meta/cases.json` → split into **`testdata/meta/messages.json`** (active) and `testdata/meta/posts.json`
   (parked, unchanged content). The builder, the Go harness, `dev-reset.sh` and the Playwright specs take
   `TLZ_CASES` (default `messages`; `all` runs everything). Instagram DM cases move to `messages.json` too but stay
   as they are until the IG pass.

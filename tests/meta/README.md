@@ -4,8 +4,12 @@
 temporary repository with the **real pipeline** and checks every case in `testdata/meta/cases.json`.
 It takes ~4 s. No server, no network (link fetching and Immich are off).
 
+Cases live in `testdata/meta/messages.json` (active) and `posts.json` (parked); `TLZ_CASES` picks which (`messages`
+by default, `posts`, `all`, or a comma list). The fixture must have been built with the same `TLZ_CASES`.
+
 ```
-go test ./tests/meta                                          # fresh temp repo from the fixture
+go test ./tests/meta                                          # fresh temp repo from the fixture (TLZ_CASES=messages)
+TLZ_CASES=all go test ./tests/meta                            # messages + posts (build the fixture with TLZ_CASES=all first)
 go test ./tests/meta -run 'TestMeta/ig-msg-pseudo-reaction'   # one case
 TLZ_TEST_REPO=/mnt/photos/timelinize/repo-dev go test ./tests/meta   # check an existing repo (e.g. after scripts/dev-reset.sh)
 TLZ_TEST_KEEP=1 go test ./tests/meta                          # keep the temp repo to poke at (path is logged)
@@ -15,7 +19,7 @@ Always build with the pinned toolchain: `PKG_CONFIG_PATH=/usr/local/lib/pkgconfi
 
 ## Adding a case
 1. Find the record in the ground-truth export (thread + `timestamp_ms`, post index, story file name).
-2. Add a case to `testdata/meta/cases.json` with `select` and `expect`.
+2. Add a case to `testdata/meta/messages.json` (or `posts.json`) with `select` and `expect`.
 3. `scripts/build-testing-data.py` (rebuilds `/mnt/photos/timelinize/testing-data`), then `go test ./tests/meta`.
 4. If the current behaviour is wrong, write the expectation for the **desired** behaviour, fix the code, and
    keep the case; if it cannot be fixed now, describe the current behaviour and add `known_issue`.
@@ -30,13 +34,15 @@ Always build with the pinned toolchain: `PKG_CONFIG_PATH=/usr/local/lib/pkgconfi
               "tagged_places": [0], "albums": [{"file": "0.json", "photos": [0]}], "uncategorized_photos": [0], "videos": [0] },
   "expect": { "items": [ { "where": {...}, "count": 1, ...assertions } ] } }
 ```
-`select.messages[].thread` is relative to the export's messages folder (`inbox/…`, `e2ee_cutover/…`, `message_requests/…`).
+`select.messages[].thread` is relative to the export's messages folder (`inbox/…`, `e2ee_cutover/…`, `message_requests/…`);
+`"all": true` instead of `ts` copies the whole thread (thread-level cases). `select.e2ee[] = {file, ts|all}` selects from the
+separate `data_messenger_e2e/<Name>_<n>.json` export (key = `timestamp`, ms), which the harness imports as a third root.
 `posts` indexes into the concatenated `posts_N.json` files of the full export.
 
 ## Expectation vocabulary
 `where` picks items of the case's data source (every field set must match):
 `ts` (exact `items.timestamp`, ms), `classification`, `has_text`, `has_file`, `is_root` (not the target of any
-relationship), `data_text_contains`, `data_file` (suffix), `data_file_contains`, `data_type_prefix`.
+relationship), `data_text_contains`, `data_file` (suffix), `data_file_contains`, `data_type_prefix`, `metadata` (subset).
 
 Attachments carry the **media's own `creation_timestamp`** (second precision), not the message's `timestamp_ms`;
 select them by `data_file`.

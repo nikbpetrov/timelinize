@@ -2,7 +2,8 @@
 # Import the Meta testing fixture (default; built by scripts/build-testing-data.py) or, with
 # DEV_SOURCE=filtered, a filtered subset of the full ground-truth exports, into the dev repo
 # (server on :12003 must be up). Extra `timelinize import` flags are passed through.
-# LF_MAX = link fetches per import (default 5).
+# Link fetching (yt-dlp/gallery-dl with cookies) is OFF by default: bookmarks keep their URL with
+# Status=unresolved for a later async pass. LF_ENABLED=true LF_MAX=5 turns it on for an import.
 set -euo pipefail
 DEV=/mnt/photos/timelinize/repo-dev
 LOG=/mnt/photos/timelinize/logs/server-dev.log
@@ -15,7 +16,7 @@ UC="--job.processing_options.item_unique_constraints.filename true \
     --job.processing_options.item_unique_constraints.latlon true \
     --job.processing_options.item_unique_constraints.classification_name true \
     --job.processing_options.item_unique_constraints.data true \
-    --job.processing_options.link_fetch.enabled true \
+    --job.processing_options.link_fetch.enabled ${LF_ENABLED:-false} \
     --job.processing_options.link_fetch.max_per_import ${LF_MAX:-5}"
 GT=/mnt/photos/timelinize/ground-truth
 TD=${TLZ_TESTDATA:-/mnt/photos/timelinize/testing-data}
@@ -25,6 +26,10 @@ if [ "${DEV_SOURCE:-fixture}" = fixture ]; then
     --job.plan.files[0].filenames[0] "$TD/instagram" "$@" >/dev/null
   timelinize import --repo "$REPO" $UC --job.plan.files[0].data_source_name facebook \
     --job.plan.files[0].filenames[0] "$TD/facebook/data" "$@" >/dev/null
+  if [ -d "$TD/facebook/data_messenger_e2e" ]; then
+    timelinize import --repo "$REPO" $UC --job.plan.files[0].data_source_name facebook \
+      --job.plan.files[0].filenames[0] "$TD/facebook/data_messenger_e2e" "$@" >/dev/null
+  fi
 else
 
 timelinize import --repo "$REPO" $UC --job.plan.files[0].data_source_name instagram \

@@ -27,9 +27,64 @@ import (
 )
 
 const (
-	defaultFixture  = "/mnt/photos/timelinize/testing-data"
-	manifestRelPath = "../../testdata/meta/cases.json"
+	defaultFixture = "/mnt/photos/timelinize/testing-data"
+	manifestDir    = "../../testdata/meta"
 )
+
+// loadManifests merges the case manifests named by TLZ_CASES ("messages" by default, "posts",
+// "all", or a comma list) — the same rule scripts/build-testing-data.py and tests/ui use.
+func loadManifests(t *testing.T) manifest {
+	t.Helper()
+	names := os.Getenv("TLZ_CASES")
+	if names == "" {
+		names = "messages"
+	}
+	var list []string
+	if names == "all" {
+		entries, err := os.ReadDir(manifestDir)
+		if err != nil {
+			t.Fatalf("listing manifests: %v", err)
+		}
+		for _, e := range entries {
+			if strings.HasSuffix(e.Name(), ".json") {
+				list = append(list, strings.TrimSuffix(e.Name(), ".json"))
+			}
+		}
+	} else {
+		list = strings.Split(names, ",")
+	}
+	var merged manifest
+	seenCase, seenCheck := map[string]bool{}, map[string]bool{}
+	for _, name := range list {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join(manifestDir, name+".json"))
+		if err != nil {
+			t.Fatalf("reading manifest %s: %v", name, err)
+		}
+		var m manifest
+		if err := json.Unmarshal(b, &m); err != nil {
+			t.Fatalf("parsing manifest %s: %v", name, err)
+		}
+		for _, c := range m.Cases {
+			if seenCase[c.ID] {
+				t.Fatalf("duplicate case id %s in %s.json", c.ID, name)
+			}
+			seenCase[c.ID] = true
+			merged.Cases = append(merged.Cases, c)
+		}
+		for _, ch := range m.Checks {
+			if !seenCheck[ch.ID] {
+				seenCheck[ch.ID] = true
+				merged.Checks = append(merged.Checks, ch)
+			}
+		}
+	}
+	t.Logf("cases: %s (%d cases, %d checks)", strings.Join(list, ","), len(merged.Cases), len(merged.Checks))
+	return merged
+}
 
 // ---- manifest ------------------------------------------------------------------------------
 
@@ -58,15 +113,16 @@ type check struct {
 
 // where selects items; every set field must match.
 type where struct {
-	TS               *int64 `json:"ts"`
-	Classification   string `json:"classification"`
-	HasText          *bool  `json:"has_text"`
-	HasFile          *bool  `json:"has_file"`
-	IsRoot           *bool  `json:"is_root"`
-	DataTextContains string `json:"data_text_contains"`
-	DataFile         string `json:"data_file"` // suffix
-	DataFileContains string `json:"data_file_contains"`
-	DataTypePrefix   string `json:"data_type_prefix"`
+	TS               *int64         `json:"ts"`
+	Classification   string         `json:"classification"`
+	HasText          *bool          `json:"has_text"`
+	HasFile          *bool          `json:"has_file"`
+	IsRoot           *bool          `json:"is_root"`
+	DataTextContains string         `json:"data_text_contains"`
+	DataFile         string         `json:"data_file"` // suffix
+	DataFileContains string         `json:"data_file_contains"`
+	DataTypePrefix   string         `json:"data_type_prefix"`
+	Metadata         map[string]any `json:"metadata"` // subset, values compared as strings
 }
 
 type itemExpect struct {
@@ -176,6 +232,9 @@ func (r *repo) items(source string, w where) ([]item, error) {
 		}
 		if meta != nil {
 			_ = json.Unmarshal([]byte(*meta), &it.Metadata)
+		}
+		if !metadataMatches(it.Metadata, w.Metadata) {
+			continue
 		}
 		if w.HasText != nil && *w.HasText != (it.DataText != nil && *it.DataText != "") {
 			continue
@@ -481,6 +540,16 @@ func checkItem(t *testing.T, r *repo, it item, x itemExpect) {
 	}
 }
 
+func metadataMatches(have map[string]any, want map[string]any) bool {
+	for k, v := range want {
+		got, ok := have[k]
+		if !ok || fmt.Sprint(got) != fmt.Sprint(v) {
+			return false
+		}
+	}
+	return true
+}
+
 func keys(m map[string]any) []string {
 	var out []string
 	for k := range m {
@@ -518,11 +587,16 @@ func importFixture(t *testing.T) string {
 	t.Cleanup(func() { tl.Close() })
 
 	constraints := map[string]bool{"filename": true, "timestamp": true, "latlon": true, "classification_name": true, "data": true}
+	// import roots: the two exports, plus the separate E2EE Messenger export when the fixture has one
+	roots := [][2]string{{"instagram", filepath.Join(fixture, "instagram")}, {"facebook", filepath.Join(fixture, "facebook", "data")}}
+	if _, err := os.Stat(filepath.Join(fixture, "facebook", "data_messenger_e2e")); err == nil {
+		roots = append(roots, [2]string{"facebook", filepath.Join(fixture, "facebook", "data_messenger_e2e")})
+	}
 	var jobIDs []uint64
-	for _, src := range []string{"instagram", "facebook"} {
-		root := filepath.Join(fixture, src)
-		if src == "facebook" {
-			root = filepath.Join(root, "data")
+	for _, sr := range roots {
+		src, root := sr[0], sr[1]
+		if _, err := os.Stat(root); err != nil {
+			continue // a manifest selection may leave a source empty
 		}
 		job := &timeline.ImportJob{
 			Plan:              timeline.ImportPlan{Files: []timeline.FileImport{{DataSourceName: src, Filenames: []string{root}}}},
@@ -563,14 +637,7 @@ func importFixture(t *testing.T) string {
 // ---- the test ------------------------------------------------------------------------------
 
 func TestMeta(t *testing.T) {
-	var m manifest
-	b, err := os.ReadFile(manifestRelPath)
-	if err != nil {
-		t.Fatalf("reading manifest: %v", err)
-	}
-	if err := json.Unmarshal(b, &m); err != nil {
-		t.Fatalf("parsing manifest: %v", err)
-	}
+	m := loadManifests(t)
 
 	dir := os.Getenv("TLZ_TEST_REPO")
 	if dir == "" {

@@ -4,10 +4,24 @@ const fs = require('fs');
 const path = require('path');
 
 const BASE = process.env.TLZ_BASE_URL || 'http://127.0.0.1:12003';
-const MANIFEST = path.join(__dirname, '..', '..', 'testdata', 'meta', 'cases.json');
+const MANIFEST_DIR = path.join(__dirname, '..', '..', 'testdata', 'meta');
 
+// Merge the case manifests named by TLZ_CASES ('messages' by default, 'posts', 'all' or a comma list),
+// the same rule as scripts/build-testing-data.py and tests/meta.
 function loadManifest() {
-	return JSON.parse(fs.readFileSync(MANIFEST, 'utf8'));
+	let names = process.env.TLZ_CASES || 'messages';
+	if (names === 'all') names = fs.readdirSync(MANIFEST_DIR).filter(f => f.endsWith('.json')).map(f => f.slice(0, -5)).sort().join(',');
+	const merged = { sources: null, cases: [], checks: [] };
+	const seen = new Set();
+	for (const name of names.split(',').map(s => s.trim()).filter(Boolean)) {
+		const m = JSON.parse(fs.readFileSync(path.join(MANIFEST_DIR, name + '.json'), 'utf8'));
+		merged.sources = merged.sources || m.sources;
+		for (const c of m.cases || []) {
+			if (seen.has(c.id)) throw new Error(`duplicate case id ${c.id} in ${name}.json`);
+			seen.add(c.id); merged.cases.push(c);
+		}
+	}
+	return merged;
 }
 
 async function api(method, endpoint, body) {
@@ -55,6 +69,7 @@ function resolveWhere(index, where) {
 	if (where.data_type_prefix) cands = cands.filter(i => (i.data_type || '').startsWith(where.data_type_prefix));
 	if (where.has_text != null) cands = cands.filter(i => Boolean(i.data_text) === where.has_text);
 	if (where.has_file != null) cands = cands.filter(i => Boolean(i.data_file) === where.has_file);
+	if (where.metadata) cands = cands.filter(i => Object.entries(where.metadata).every(([k, v]) => i.metadata && String(i.metadata[k]) === String(v)));
 	return cands;
 }
 

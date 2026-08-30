@@ -49,7 +49,7 @@ reels) / message 26 (8 share-only, no data) / bookmark 8; facebook message 29 / 
 | `dev-import.sh` | imports the testing fixture (default) or, with `DEV_SOURCE=filtered`, the filtered subset below; unique constraints + `link_fetch` (`LF_MAX` fetches/import, default 5) |
 | `dev-counts.py [repo]` | items per source/classification, no-data counts, entities, mojibake |
 | `verify-import.py <source> <export> [filters]` | expected (from export, importer rules) vs actual; bookmarks by status, Immich mapping, job counters |
-| `build-testing-data.py` | builds the Meta testing fixture from `testdata/meta/cases.json` (see `testing.md`) |
+| `build-testing-data.py` | builds the Meta testing fixture from `testdata/meta/{messages,posts}.json` (`TLZ_CASES`) (see `testing.md`) |
 | `inventory-facebook.py` | fingerprints a Facebook export (every file, post/message shapes, title patterns, media cross-references) → `docs/fork/facebook-inventory.md`; rerun on every new export |
 
 ## Dev config (`/root/.config/timelinize-dev/timelinize/config.json`)

@@ -1,0 +1,964 @@
+{
+  "sources": {
+    "instagram": {
+      "export": "ig",
+      "owner": "Nikolay Petrov",
+      "username": "nik.b.petrov"
+    },
+    "facebook": {
+      "export": "fb/data",
+      "owner": "Nikolay Petrov",
+      "username": "nikbpetrov"
+    }
+  },
+  "cases": [
+    {
+      "id": "ig-post-carousel-caption",
+      "source": "instagram",
+      "entity": "post",
+      "subtype": "carousel with caption (7 jpg)",
+      "why": "Post text is the root social item; every media is an attached social item.",
+      "select": {
+        "posts": [
+          0
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1641235355000,
+              "classification": "social",
+              "has_text": true
+            },
+            "count": 1,
+            "data_text_contains": "Starting 2022",
+            "owner": "nik.b.petrov",
+            "edges_out_count": {
+              "attachment": 7
+            }
+          },
+          {
+            "where": {
+              "ts": 1641235355000,
+              "classification": "social",
+              "has_file": true
+            },
+            "count": 7,
+            "data_type_prefix": "image/"
+          }
+        ]
+      }
+    },
+    {
+      "id": "ig-post-single-title-on-media",
+      "source": "instagram",
+      "entity": "post",
+      "subtype": "single image, caption stored on the media entry not the post",
+      "why": "Instagram puts the caption in media[0].title for single-media posts; must still become the post text.",
+      "select": {
+        "posts": [
+          3
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1634329273000,
+              "classification": "social",
+              "has_text": true
+            },
+            "count": 1,
+            "data_text_contains": "still feels like a dream",
+            "edges_out_count": {
+              "attachment": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "ig-post-single-video",
+      "source": "instagram",
+      "entity": "post",
+      "subtype": "single video with caption",
+      "select": {
+        "posts": [
+          11
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1622995271000,
+              "classification": "social",
+              "has_file": true
+            },
+            "count": 1,
+            "data_type_prefix": "video/"
+          }
+        ]
+      }
+    },
+    {
+      "id": "ig-post-mixed-carousel",
+      "source": "instagram",
+      "entity": "post",
+      "subtype": "carousel mixing jpg and mp4",
+      "select": {
+        "posts": [
+          17
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1613501041000,
+              "classification": "social",
+              "has_text": true
+            },
+            "count": 1,
+            "edges_out_count": {
+              "attachment": 4
+            }
+          },
+          {
+            "where": {
+              "classification": "social",
+              "data_file": "17874645287230420.mp4"
+            },
+            "count": 1,
+            "_note": "video slide has the media's own creation_timestamp"
+          }
+        ]
+      }
+    },
+    {
+      "id": "ig-story-image-caption",
+      "source": "instagram",
+      "entity": "story",
+      "subtype": "jpg with caption",
+      "select": {
+        "stories": [
+          "18037091606206114.jpg"
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1731455863000,
+              "classification": "media"
+            },
+            "count": 1,
+            "data_file": ".jpg",
+            "metadata": {
+              "Caption": "21C Can't find the temp thingy ffs"
+            },
+            "owner": "nik.b.petrov"
+          }
+        ]
+      }
+    },
+    {
+      "id": "ig-story-video-nocaption",
+      "source": "instagram",
+      "entity": "story",
+      "subtype": "mp4 without caption",
+      "select": {
+        "stories": [
+          "18071323396892038.mp4"
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1755748701000,
+              "classification": "media"
+            },
+            "count": 1,
+            "data_type_prefix": "video/"
+          }
+        ]
+      }
+    },
+    {
+      "id": "ig-story-webp",
+      "source": "instagram",
+      "entity": "story",
+      "subtype": "webp image (2025 exports)",
+      "select": {
+        "stories": [
+          "18094583893561657.webp"
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1755744573000,
+              "classification": "media"
+            },
+            "count": 1,
+            "data_type_prefix": "image/"
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-post-status-text",
+      "source": "facebook",
+      "entity": "post",
+      "subtype": "status update, text only",
+      "select": {
+        "posts": [
+          85
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1700438332000,
+              "classification": "social"
+            },
+            "count": 1,
+            "has_text": true,
+            "owner": "nikbpetrov",
+            "metadata": {
+              "Title": "Nikolay Petrov updated his status."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-post-shared-link-with-text",
+      "source": "facebook",
+      "entity": "post",
+      "subtype": "shared external link with own text",
+      "why": "Shared links become bookmark items keyed by canonical URL (upstream stored them as nameless ClassLocation items, which the empty-item pruning then removed).",
+      "select": {
+        "posts": [
+          0
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1305666562000,
+              "classification": "social"
+            },
+            "count": 1,
+            "has_text": true,
+            "edges_out": [
+              {
+                "label": "attachment",
+                "to_item": {
+                  "classification": "bookmark",
+                  "data_text_contains": "http"
+                }
+              }
+            ]
+          },
+          {
+            "where": {
+              "ts": 1305666562000,
+              "classification": "bookmark"
+            },
+            "count": 1,
+            "metadata_has": [
+              "URL",
+              "Kind",
+              "Status"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-post-shared-link-no-text",
+      "source": "facebook",
+      "entity": "post",
+      "subtype": "shared link without any text (empty root post)",
+      "select": {
+        "posts": [
+          36
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1355078309000,
+              "classification": "social"
+            },
+            "count": 1,
+            "data_text": null,
+            "edges_out_count": {
+              "attachment": 1
+            }
+          },
+          {
+            "where": {
+              "ts": 1355078309000,
+              "classification": "bookmark"
+            },
+            "count": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-post-photo",
+      "source": "facebook",
+      "entity": "post",
+      "subtype": "single photo with text",
+      "select": {
+        "posts": [
+          76
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1710356155000,
+              "classification": "social",
+              "has_file": true
+            },
+            "count": 1,
+            "data_type_prefix": "image/"
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-post-video",
+      "source": "facebook",
+      "entity": "post",
+      "subtype": "single video with text",
+      "select": {
+        "posts": [
+          71
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1715198609000,
+              "classification": "social"
+            },
+            "count": 1,
+            "has_text": true,
+            "edges_out_count": {
+              "attachment": 1
+            }
+          },
+          {
+            "where": {
+              "classification": "social",
+              "data_file": "3701647923444080.mp4"
+            },
+            "count": 1,
+            "data_type_prefix": "video/",
+            "metadata_has": [
+              "Description"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-post-multi-photo-no-text",
+      "source": "facebook",
+      "entity": "post",
+      "subtype": "2 photos, no text",
+      "select": {
+        "posts": [
+          131
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1658596368000,
+              "classification": "social",
+              "has_file": true
+            },
+            "count": 2
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-post-many-photos-and-video",
+      "source": "facebook",
+      "entity": "post",
+      "subtype": "12 photos + 1 video with text",
+      "select": {
+        "posts": [
+          115
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1683359340000,
+              "classification": "social",
+              "has_text": true
+            },
+            "count": 1,
+            "edges_out_count": {
+              "attachment": 13
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-post-video-with-place",
+      "source": "facebook",
+      "entity": "post",
+      "subtype": "video + place tag",
+      "select": {
+        "posts": [
+          116
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1683051197000,
+              "classification": "social",
+              "has_text": true
+            },
+            "count": 1,
+            "edges_out": [
+              {
+                "label": "attachment",
+                "to_entity_type": "place"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-post-place-only",
+      "source": "facebook",
+      "entity": "post",
+      "subtype": "'was travelling to' with a place attachment and no media",
+      "select": {
+        "posts": [
+          241
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1529676582000,
+              "classification": "social"
+            },
+            "count": 1,
+            "edges_out": [
+              {
+                "label": "attachment",
+                "to_entity_type": "place"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-post-life-event",
+      "source": "facebook",
+      "entity": "post",
+      "subtype": "life event with description and 2 photos (placed at backdated_timestamp, not when it was added)",
+      "select": {
+        "posts": [
+          117
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1681416120000,
+              "classification": "social",
+              "has_text": true
+            },
+            "count": 1,
+            "data_text_contains": "PhD, University of Cambridge, 2023-2026\n\nFind. Great. Mentors.",
+            "metadata": {
+              "Life event": "PhD, University of Cambridge, 2023-2026",
+              "Start date": "2023-04-13"
+            },
+            "metadata_has": [
+              "Posted"
+            ],
+            "edges_out_count": {
+              "attachment": 2
+            },
+            "edges_out": [
+              {
+                "label": "attachment",
+                "to_item": {
+                  "classification": "social",
+                  "data_file": "6121007054644986.jpg",
+                  "ts": 1681376880000
+                }
+              },
+              {
+                "label": "attachment",
+                "to_item": {
+                  "classification": "social",
+                  "data_file": "6121007044644987.jpg",
+                  "ts": 1681376880000
+                }
+              }
+            ]
+          },
+          {
+            "where": {
+              "ts": 1681412938000,
+              "classification": "social"
+            },
+            "count": 0
+          },
+          {
+            "where": {
+              "data_file": "6121007054644986.jpg"
+            },
+            "count": 1,
+            "classification": "social",
+            "ts": 1681376880000,
+            "metadata": {
+              "Upload IP": "77.78.31.92"
+            }
+          }
+        ]
+      },
+      "why": "the export puts everything in attachments[].data[].life_event; the post itself has no text and 'timestamp' is when the entry was added (2023-04-13), while backdated_timestamp is where Facebook shows it"
+    },
+    {
+      "id": "fb-post-event-share",
+      "source": "facebook",
+      "entity": "post",
+      "subtype": "shared an event (event attachment, no own text, mojibake name)",
+      "select": {
+        "posts": [
+          88
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1694611731000,
+              "classification": "social"
+            },
+            "count": 1,
+            "data_text": null,
+            "edges_out": [
+              {
+                "label": "attachment",
+                "to_item": {
+                  "classification": "event",
+                  "data_text_contains": "NEON PARTY | by Alex & Tini",
+                  "ts": 1696701600000,
+                  "timespan": 1696719600000
+                }
+              }
+            ]
+          },
+          {
+            "where": {
+              "ts": 1696701600000,
+              "classification": "event"
+            },
+            "count": 1,
+            "data_text_contains": "salsa bachata kizomba"
+          }
+        ]
+      },
+      "why": "post has no text of its own; the event's name is mojibake in the export and must be decoded"
+    },
+    {
+      "id": "fb-post-life-event-place",
+      "source": "facebook",
+      "entity": "post",
+      "subtype": "life event with a place and no description/photos ('Moved to Oxford'), backdated by 2.5 years",
+      "why": "life_event.place must become a place entity like a post's place attachment; the title alone is the text",
+      "select": {
+        "posts": [
+          118
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1601542800000,
+              "classification": "social"
+            },
+            "count": 1,
+            "data_text": "Moved to Oxford, Oxfordshire",
+            "metadata": {
+              "Life event": "Moved to Oxford, Oxfordshire",
+              "Start date": "2020-10-01"
+            },
+            "edges_out": [
+              {
+                "label": "attachment",
+                "to_entity": "Oxford, Oxfordshire",
+                "to_entity_type": "place"
+              }
+            ]
+          },
+          {
+            "where": {
+              "ts": 1681412316000,
+              "classification": "social"
+            },
+            "count": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-post-life-event-end-date",
+      "source": "facebook",
+      "entity": "post",
+      "subtype": "life event exported twice: once for the start, once for the end (end_date set), same title",
+      "why": "Facebook emits one timeline entry per boundary; both must survive as separate items at their own backdated time",
+      "select": {
+        "posts": [
+          185,
+          186
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1622494800000,
+              "classification": "social"
+            },
+            "count": 1,
+            "data_text_contains": "Research Assistant",
+            "metadata": {
+              "Start date": "2021-05-31"
+            }
+          },
+          {
+            "where": {
+              "ts": 1677578400000,
+              "classification": "social"
+            },
+            "count": 1,
+            "data_text_contains": "Research Assistant",
+            "metadata": {
+              "Start date": "2021-05-31",
+              "End date": "2023-02-28"
+            },
+            "edges_out": [
+              {
+                "label": "attachment",
+                "to_entity": "Cardiff",
+                "to_entity_type": "place"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-post-event-attended",
+      "source": "facebook",
+      "entity": "post",
+      "subtype": "'was attending <event> at <place>' with own text",
+      "why": "event attachment carries name + start/end; the post keeps its own time and text, the event item spans the event's time",
+      "select": {
+        "posts": [
+          237
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1531775904000,
+              "classification": "social"
+            },
+            "count": 1,
+            "data_text_contains": "Nothing less of feeling alive!",
+            "edges_out": [
+              {
+                "label": "attachment",
+                "to_item": {
+                  "classification": "event",
+                  "data_text": "An Evening With Sam Harris, Jordan Peterson & Douglas Murray",
+                  "ts": 1531767600000,
+                  "timespan": 1531774800000
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-post-wrote-on-timeline",
+      "source": "facebook",
+      "entity": "post",
+      "subtype": "wrote on someone else's profile (title carries the recipient; Facebook renamed 'timeline' to 'profile')",
+      "select": {
+        "posts": [
+          344
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1458629813000,
+              "classification": "social"
+            },
+            "count": 1,
+            "edges_out": [
+              {
+                "label": "sent",
+                "to_entity_contains": "Nikolay Dimitrov"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-post-shared-from-instagram",
+      "source": "facebook",
+      "entity": "post",
+      "subtype": "cross-posted from Instagram (media + place)",
+      "select": {
+        "posts": [
+          166
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1634329276000,
+              "classification": "social",
+              "has_text": true
+            },
+            "count": 1,
+            "metadata": {
+              "Title": "Nikolay Petrov Shared from Instagram"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-post-featured-item",
+      "source": "facebook",
+      "entity": "post",
+      "subtype": "'added an item to the featured section' (media, no text)",
+      "select": {
+        "posts": [
+          333
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1630289846000,
+              "classification": "social"
+            },
+            "count": 1,
+            "data_text": null,
+            "edges_out_count": {
+              "attachment": 1
+            }
+          },
+          {
+            "where": {
+              "classification": "social",
+              "data_file": "2304296989712704.mp4"
+            },
+            "count": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-post-empty",
+      "source": "facebook",
+      "entity": "post",
+      "subtype": "'posted something via <app>' with no text and no attachments",
+      "why": "Nothing to show; the pipeline prunes empty items without edges.",
+      "select": {
+        "posts": [
+          91
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1379706636000
+            },
+            "count": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-post-shared-reel",
+      "source": "facebook",
+      "entity": "post",
+      "subtype": "shared a reel: export carries only the title and an empty external_context url",
+      "select": {
+        "posts": [
+          258
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1513201083000,
+              "classification": "social"
+            },
+            "count": 0
+          }
+        ]
+      },
+      "known_issue": "the export carries only the title and an empty external_context url, so the post is pruned entirely"
+    },
+    {
+      "id": "fb-tagged-place",
+      "source": "facebook",
+      "entity": "place",
+      "subtype": "places_you_have_been_tagged_in entry (visit without coordinates)",
+      "select": {
+        "tagged_places": [
+          0
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1697144606000,
+              "classification": "location"
+            },
+            "count": 1,
+            "edges_out": [
+              {
+                "label": "visit",
+                "to_entity": "University of Cambridge"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-album-photo",
+      "source": "facebook",
+      "entity": "album",
+      "subtype": "photo listed in an album manifest (posts/album/N.json)",
+      "select": {
+        "albums": [
+          {
+            "file": "0.json",
+            "photos": [
+              0
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "classification": "media",
+              "data_file": "1711705882241814.jpg"
+            },
+            "count": 1,
+            "edges_out": [
+              {
+                "label": "in_collection",
+                "to_item": {
+                  "classification": "collection",
+                  "data_text": "Cover photos"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-uncategorized-photo",
+      "source": "facebook",
+      "entity": "media",
+      "subtype": "your_uncategorized_photos entry",
+      "select": {
+        "uncategorized_photos": [
+          0
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "classification": "media",
+              "data_file": "206217716123979.jpg"
+            },
+            "count": 1
+          }
+        ]
+      }
+    }
+  ],
+  "checks": [
+    {
+      "id": "no-mojibake-entities",
+      "sql": "select count(*) from entities where name like '%Ð%' or name like '%Ñ%'",
+      "expect": 0
+    },
+    {
+      "id": "no-media-without-file",
+      "sql": "select count(*) from items i join classifications c on c.id=i.classification_id where c.name='media' and i.data_file is null",
+      "expect": 0
+    },
+    {
+      "id": "bookmarks-have-kind",
+      "sql": "select count(*) from items i join classifications c on c.id=i.classification_id where c.name='bookmark' and json_extract(i.metadata,'$.Kind') is null",
+      "expect": 0
+    },
+    {
+      "id": "no-empty-unlinked-items",
+      "sql": "select count(*) from items where data_text is null and data_file is null and latitude is null and retrieval_key is null and id not in (select from_item_id from relationships where from_item_id is not null) and id not in (select to_item_id from relationships where to_item_id is not null)",
+      "expect": 0,
+      "_note": "pipeline prunes empty items without edges (upstream NOT IN NULL bug fixed on fork)"
+    }
+  ]
+}

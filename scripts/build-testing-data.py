@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
 """Build the Meta testing fixture: a mini Instagram + Facebook export containing only the
-records selected by testdata/meta/cases.json, copied verbatim (bytes untouched) from the
-ground-truth exports into the real export layout, so the importers run unchanged.
+records selected by the case manifests in testdata/meta/*.json, copied verbatim (bytes untouched)
+from the ground-truth exports into the real export layout, so the importers run unchanged.
 
-  scripts/build-testing-data.py                # -> /mnt/photos/timelinize/testing-data
-  scripts/build-testing-data.py --out DIR --ground-truth DIR
+  scripts/build-testing-data.py                # manifests from TLZ_CASES (default: messages) -> /mnt/photos/timelinize/testing-data
+  TLZ_CASES=all scripts/build-testing-data.py  # every manifest (messages + posts)
+  TLZ_CASES=messages,posts scripts/build-testing-data.py --out DIR --ground-truth DIR
+
+The Go harness and the Playwright specs read TLZ_CASES the same way, so build and test with the same value.
 
 Output layout:
-  <out>/instagram/            2025 Instagram layout (import root)
-  <out>/facebook/data/        2024+ Facebook layout (import root)
-  <out>/MANIFEST.md           what was copied, per case
+  <out>/instagram/                   2025 Instagram layout (import root)
+  <out>/facebook/data/               2024+ Facebook layout (import root)
+  <out>/facebook/data_messenger_e2e/ the separate end-to-end-encrypted Messenger export (import root), when selected
+  <out>/MANIFEST.md                  what was copied, per case
 
 Re-running wipes and rebuilds <out>/instagram and <out>/facebook (a marker file guards
 against deleting a folder we did not create).
@@ -17,7 +21,7 @@ against deleting a folder we did not create).
 import argparse, json, os, shutil, sys, glob, collections
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-MANIFEST = os.path.join(HERE, '..', 'testdata', 'meta', 'cases.json')
+MANIFEST_DIR = os.path.join(HERE, '..', 'testdata', 'meta')
 MARKER = '.generated-by-build-testing-data'
 
 IG_PROFILE = 'personal_information/personal_information/personal_information.json'
@@ -32,6 +36,28 @@ FB_ALBUMS = 'your_facebook_activity/posts/album'
 FB_UNCAT = 'your_facebook_activity/posts/your_uncategorized_photos.json'
 FB_VIDEOS = 'your_facebook_activity/posts/your_videos.json'
 FB_MESSAGES = 'your_facebook_activity/messages'
+FB_E2EE = 'data_messenger_e2e'
+
+
+def load_manifests(names, directory=MANIFEST_DIR):
+    """Merge the case manifests named in TLZ_CASES ('messages', 'posts', 'all' or a comma list)."""
+    if names == 'all':
+        names = ','.join(sorted(os.path.splitext(f)[0] for f in os.listdir(directory) if f.endswith('.json')))
+    merged = {'sources': None, 'cases': [], 'checks': [], 'names': []}
+    seen_cases, seen_checks = set(), set()
+    for name in [n.strip() for n in names.split(',') if n.strip()]:
+        with open(os.path.join(directory, name + '.json'), encoding='utf-8') as f:
+            m = json.load(f)
+        merged['sources'] = merged['sources'] or m['sources']
+        merged['names'].append(name)
+        for c in m.get('cases', []):
+            if c['id'] in seen_cases:
+                raise SystemExit(f'duplicate case id {c["id"]} in {name}.json')
+            seen_cases.add(c['id']); merged['cases'].append(c)
+        for ch in m.get('checks', []):
+            if ch['id'] not in seen_checks:
+                seen_checks.add(ch['id']); merged['checks'].append(ch)
+    return merged
 
 
 class Builder:
@@ -91,9 +117,10 @@ def load_posts(b, pattern):
     return posts
 
 
-def select_messages(b, msg_root, thread, timestamps):
-    """Return the thread JSON with only the selected messages (order preserved), from all message_N.json parts."""
-    files = sorted(glob.glob(os.path.join(b.src, msg_root, thread, 'message_*.json')))
+def select_messages(b, msg_root, thread, timestamps, whole=False):
+    """Return the thread JSON with only the selected messages (order preserved), from all message_N.json parts.
+    whole=True keeps every message (thread-level cases: deleted users, self thread, marketplace title...)."""
+    files = sorted(glob.glob(os.path.join(b.src, msg_root, thread, 'message_*.json')), key=lambda p: int(p.rsplit('_', 1)[1].split('.')[0]))
     if not files:
         raise SystemExit(f'{b.name}: thread not found: {thread}')
     want = set(timestamps)
@@ -103,7 +130,7 @@ def select_messages(b, msg_root, thread, timestamps):
             data = json.load(fh)
         if out is None:
             out = {k: v for k, v in data.items() if k != 'messages'}
-        found += [m for m in data['messages'] if m.get('timestamp_ms') in want]
+        found += [m for m in data['messages'] if whole or m.get('timestamp_ms') in want]
     got = {m['timestamp_ms'] for m in found}
     for ts in want - got:
         b.missing.append((b.case, f'{thread} timestamp_ms={ts}'))
@@ -112,29 +139,57 @@ def select_messages(b, msg_root, thread, timestamps):
     return out
 
 
+def select_e2ee(b, file, timestamps, whole=False):
+    """Return one data_messenger_e2e/<Name>_<n>.json thread with only the selected messages (key: timestamp, ms)."""
+    if not os.path.isfile(b.path(file)):
+        raise SystemExit(f'{b.name}: e2ee thread not found: {file}')
+    data = b.load(file)
+    want = set(timestamps)
+    found = [m for m in data['messages'] if whole or m.get('timestamp') in want]
+    for ts in want - {m['timestamp'] for m in found}:
+        b.missing.append((b.case, f'{file} timestamp={ts}'))
+    data['messages'] = found
+    return data
+
+
 def build(manifest, gt, out):
     ig = Builder(os.path.join(gt, manifest['sources']['instagram']['export']), os.path.join(out, 'instagram'), 'instagram')
     fb = Builder(os.path.join(gt, manifest['sources']['facebook']['export']), os.path.join(out, 'facebook', 'data'), 'facebook')
-    builders = {'instagram': ig, 'facebook': fb}
+    # the E2EE export sits next to data/ in the ground truth (fb/data_messenger_e2e) and in the fixture
+    e2e = Builder(os.path.join(gt, manifest['sources']['facebook']['export'], '..', FB_E2EE), os.path.join(out, 'facebook', FB_E2EE), 'facebook-e2ee')
+    builders = {'instagram': ig, 'facebook': fb, 'facebook-e2ee': e2e}
 
     for b in builders.values():
         if os.path.isdir(b.dst) and not os.path.exists(os.path.join(b.dst, MARKER)):
             raise SystemExit(f'refusing to wipe {b.dst}: no {MARKER} marker (not created by this script)')
         shutil.rmtree(b.dst, ignore_errors=True)
+        if b is e2e:
+            continue  # only created when a case selects E2EE messages (the importer treats it as its own import root)
         os.makedirs(b.dst)
         open(os.path.join(b.dst, MARKER), 'w').write('generated by scripts/build-testing-data.py; safe to delete\n')
 
     # accumulate selections per source
     sel = {s: collections.defaultdict(list) for s in builders}
     msg_sel = {s: collections.defaultdict(set) for s in builders}   # thread -> {ts}
+    whole = {s: set() for s in builders}                            # threads copied entirely ("all": true)
+    e2e_sel = collections.defaultdict(set)                          # e2ee file -> {ts}
+    e2e_whole = set()
     case_of = {s: collections.defaultdict(list) for s in builders}  # (kind, key) -> [case ids]
     for case in manifest['cases']:
         s = case['source']
         for kind, keys in case['select'].items():
             if kind == 'messages':
                 for m in keys:
-                    msg_sel[s][m['thread']].update(m['ts'])
+                    msg_sel[s][m['thread']].update(m.get('ts', []))
+                    if m.get('all'):
+                        whole[s].add(m['thread'])
                     case_of[s][('messages', m['thread'])].append(case['id'])
+            elif kind == 'e2ee':
+                for m in keys:
+                    e2e_sel[m['file']].update(m.get('ts', []))
+                    if m.get('all'):
+                        e2e_whole.add(m['file'])
+                    case_of['facebook-e2ee'][('e2ee', m['file'])].append(case['id'])
             else:
                 for k in keys:
                     key = json.dumps(k, sort_keys=True)
@@ -170,7 +225,7 @@ def build(manifest, gt, out):
         b.write_json(IG_STORIES, {'ig_stories': chosen})
     for thread, tss in msg_sel['instagram'].items():
         b.case = ','.join(case_of['instagram'][('messages', thread)])
-        data = select_messages(b, IG_MESSAGES, thread, tss)
+        data = select_messages(b, IG_MESSAGES, thread, tss, whole=thread in whole['instagram'])
         b.write_json(f'{IG_MESSAGES}/{thread}/message_1.json', data)
         b.copy_media_of(data['messages'])
 
@@ -209,13 +264,26 @@ def build(manifest, gt, out):
         b.write_json(FB_VIDEOS, {key: picked}); b.copy_media_of(picked)
     for thread, tss in msg_sel['facebook'].items():
         b.case = ','.join(case_of['facebook'][('messages', thread)])
-        data = select_messages(b, FB_MESSAGES, thread, tss)
+        data = select_messages(b, FB_MESSAGES, thread, tss, whole=thread in whole['facebook'])
         b.write_json(f'{FB_MESSAGES}/{thread}/message_1.json', data)
         b.copy_media_of(data['messages'])
+        if isinstance(data.get('image'), dict):
+            b.copy_media_of(data['image'])  # group picture
+
+    # ---- Facebook E2EE export (separate import root)
+    b = e2e
+    if e2e_sel:
+        os.makedirs(b.dst, exist_ok=True)
+        open(os.path.join(b.dst, MARKER), 'w').write('generated by scripts/build-testing-data.py; safe to delete\n')
+        for file, tss in e2e_sel.items():
+            b.case = ','.join(case_of['facebook-e2ee'][('e2ee', file)])
+            data = select_e2ee(b, file, tss, whole=file in e2e_whole)
+            b.write_json(file, data)
+            b.copy_media_of(data['messages'])  # uris are ./media/<uuid>.<ext>; "Failed to download media" has no slash and is skipped
 
     # ---- manifest
     lines = ['# Meta testing fixture', '',
-             f'Generated by `scripts/build-testing-data.py` from `{gt}` using `testdata/meta/cases.json` ({len(manifest["cases"])} cases).',
+             f'Generated by `scripts/build-testing-data.py` from `{gt}` using testdata/meta/{{{",".join(manifest["names"])}}}.json ({len(manifest["cases"])} cases).',
              'Do not edit by hand; edit the cases file and rebuild.', '']
     total_bytes = 0
     for b in builders.values():
@@ -228,24 +296,25 @@ def build(manifest, gt, out):
             for f in files:
                 lines.append(f'  - `{f}`')
         lines.append('')
-    if ig.missing or fb.missing:
-        lines += ['## Missing in ground truth', ''] + [f'- {c}: `{m}`' for c, m in ig.missing + fb.missing] + ['']
+    missing = ig.missing + fb.missing + e2e.missing
+    if missing:
+        lines += ['## Missing in ground truth', ''] + [f'- {c}: `{m}`' for c, m in missing] + ['']
     with open(os.path.join(out, 'MANIFEST.md'), 'w', encoding='utf-8') as f:
         f.write('\n'.join(lines))
-    print(f'fixture written to {out}: instagram {len(ig.copied)} media files, facebook {len(fb.copied)} media files, {total_bytes/1e6:.1f} MB')
-    for c, m in ig.missing + fb.missing:
+    print(f'fixture written to {out} from {",".join(manifest["names"])}: instagram {len(ig.copied)} media files, '
+          f'facebook {len(fb.copied)} media files, e2ee {len(e2e.copied)} media files, {total_bytes/1e6:.1f} MB')
+    for c, m in missing:
         print(f'  MISSING ({c}): {m}', file=sys.stderr)
-    return 1 if (ig.missing or fb.missing) else 0
+    return 1 if missing else 0
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('--manifest', default=MANIFEST)
+    ap.add_argument('--cases', default=os.environ.get('TLZ_CASES', 'messages'), help="manifest names in testdata/meta (comma list) or 'all'")
     ap.add_argument('--ground-truth', default='/mnt/photos/timelinize/ground-truth')
     ap.add_argument('--out', default='/mnt/photos/timelinize/testing-data')
     a = ap.parse_args()
-    with open(a.manifest, encoding='utf-8') as f:
-        manifest = json.load(f)
+    manifest = load_manifests(a.cases)
     os.makedirs(a.out, exist_ok=True)
     sys.exit(build(manifest, a.ground_truth, a.out))
 

@@ -14,7 +14,7 @@ pattern, which the script produces and which will surface anything new in a futu
 mapping from pattern to representation. Everything below is one row per pattern, with counts from *this* export.
 
 Legend: ✔ represented as intended · ⚠ partially (details in the row) · ✘ not imported · — deliberately ignored.
-`case` = id in `testdata/meta/cases.json` (blank = no fixture yet; add one when working on the row).
+`case` = id in `testdata/meta/messages.json` / `posts.json` (blank = no fixture yet; add one when working on the row).
 
 ## 1. Posts — `your_facebook_activity/posts/your_posts__check_ins__photos_and_videos_*.json` (390)
 
@@ -144,5 +144,5 @@ Legend: ✔ represented as intended · ⚠ partially (details in the row) · ✘
 8. **T10 / T12** — mark attachments whose file is not in the archive as unavailable instead of leaving `data_file` NULL.
 9. **M10** cosmetic file placement; **M3** album covers.
 
-Each row that gets worked on gets a fixture case in `testdata/meta/cases.json` (selectors are the `ex.` column) so the
+Each row that gets worked on gets a fixture case in `testdata/meta/messages.json` / `posts.json` (selectors are the `ex.` column) so the
 harness pins the representation; the inventory script is rerun on every new export to catch shapes not in this list.

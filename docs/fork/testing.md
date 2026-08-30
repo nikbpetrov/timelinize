@@ -1,7 +1,10 @@
 # Testing pipeline for the Meta importers
 
-Three layers, one manifest. Everything hangs off `testdata/meta/cases.json`: a list of **cases** (entity ×
+Three layers, one set of manifests. Everything hangs off `testdata/meta/*.json`: lists of **cases** (entity ×
 subtype, each pointing at real records in the ground-truth exports) with the representation we expect after import.
+`messages.json` (Messenger + Instagram DMs) is the active set; `posts.json` (posts, stories, albums, places) is parked.
+`TLZ_CASES` selects manifests everywhere (`messages` default, `posts`, `all`, or a comma list) — build the fixture and
+run the tests with the same value.
 
 ```
  ground-truth exports ──build-testing-data.py──▶ testing-data/ (mini export, real layout, 64 MB)
@@ -15,11 +18,11 @@ subtype, each pointing at real records in the ground-truth exports) with the rep
 
 | Piece | Where | Run |
 |---|---|---|
-| Case manifest | `testdata/meta/cases.json` (75 cases, 7 global checks) | — |
-| Fixture builder | `scripts/build-testing-data.py` → `/mnt/photos/timelinize/testing-data/{instagram,facebook/data}` + `MANIFEST.md` | `python3 scripts/build-testing-data.py` |
+| Case manifests | `testdata/meta/messages.json` (46 cases, 7 checks, active), `posts.json` (29 cases, parked) | `TLZ_CASES=messages|posts|all` |
+| Fixture builder | `scripts/build-testing-data.py` → `/mnt/photos/timelinize/testing-data/{instagram,facebook/data,facebook/data_messenger_e2e}` + `MANIFEST.md` | `python3 scripts/build-testing-data.py` (`TLZ_CASES=all` for everything) |
 | Import-level tests | `tests/meta/meta_test.go` (vocabulary in `tests/meta/README.md`) | `PKG_CONFIG_PATH=/usr/local/lib/pkgconfig GOTOOLCHAIN=go1.25.8 CGO_ENABLED=1 go test ./tests/meta` |
 | Same checks on a live repo | — | `TLZ_TEST_REPO=/mnt/photos/timelinize/repo-dev go test ./tests/meta` |
-| Dev server with the fixture | `scripts/dev-reset.sh` (wipes `repo-dev`, imports fixture with `link_fetch` + Immich on) | ~1 min |
+| Dev server with the fixture | `scripts/dev-reset.sh` (wipes `repo-dev`, imports the fixture; Immich on, link fetching **off** unless `LF_ENABLED=true`) | ~1 min |
 | UI smoke tests | `tests/ui/specs/{items,conversations}.spec.js` | `cd tests/ui && TLZ_BASE_URL=http://127.0.0.1:12003 npx playwright test` (~3 min; `npx playwright show-report`) |
 | Item debug panel | `/items/<repo>/<id>?debug=1` (sticky per browser; `?debug=0` turns it off); API `item-debug --repo --item_id` | — |
 
@@ -34,7 +37,7 @@ contains selectors (thread names, timestamps) and short expected snippets.
 
 ## Taxonomy (what exists in these exports, and what we do with it)
 Counts are from the full exports (IG 7,894 messages / 28 posts / 356 stories; FB ~1.05 M messages / 390 posts).
-Case ids in `cases.json`; ✔ = represented as intended, ⚠ = current behaviour documented as `known_issue`.
+Case ids in `messages.json` / `posts.json`; ✔ = represented as intended, ⚠ = current behaviour documented as `known_issue`.
 
 ### Instagram — posts (own)
 | Subtype | # | Case | Representation |

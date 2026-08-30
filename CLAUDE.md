@@ -107,9 +107,9 @@ Fork: `origin` = github.com/nikbpetrov/timelinize, `upstream` = github.com/timel
 - Quick verification: `scripts/dev-counts.py [repo]`, `scripts/verify-import.py <source> <export> [filters]`; the import
   job's final `message` holds "N new, N updated, N skipped items; N new entities".
 - Dev loop: server :12003 (`XDG_CONFIG_HOME=/root/.config/timelinize-dev`) on `repo-dev`; `scripts/dev-reset.sh` after a build imports the
-  **testing fixture** (`/mnt/photos/timelinize/testing-data`, built from `testdata/meta/cases.json`). Item pages take `?debug=1` for the raw-data panel.
+  **testing fixture** (`/mnt/photos/timelinize/testing-data`, built from `testdata/meta/messages.json`; `TLZ_CASES=all` adds `posts.json`). Item pages take `?debug=1` for the raw-data panel.
 - Tests: `go test ./tests/meta` (import-level, real pipeline) and `cd tests/ui && npx playwright test` (UI, needs the dev server). Add a case to
-  `testdata/meta/cases.json` for every reported problem; the harness prints actual rows/edges on failure.
+  `testdata/meta/messages.json` (or `posts.json`) for every reported problem; the harness prints actual rows/edges on failure.
 - Fork features are configured in `config.json`: `link_fetch` (cookies, delays; per-job override via
   `processing_options.link_fetch`) and `immich` (url, api_key_file, album). Dev config has both; main (:12002) not yet.
 
