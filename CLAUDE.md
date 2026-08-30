@@ -81,7 +81,7 @@ Fork: `origin` = github.com/nikbpetrov/timelinize, `upstream` = github.com/timel
 | `tlzapp/` | App layer: HTTP API + CLI (symmetric), config, server, frontend serving, Python ML sidecar |
 | `frontend/` | Vanilla JS/HTML/CSS UI, no build step (`pages/*.html`, `resources/js/*.js`) |
 | `internal/` | `tlzmedia` (libvips image ops), `airports` (IATA lookup), `oauth2client`; **fork:** `linkfetch` (yt-dlp/gallery-dl resolver + cache), `immich` (API client) |
-| `scripts/` | **fork:** `dev-reset.sh` / `dev-import.sh` (rebuild the dev repo from the fixture in ~1 min), `dev-counts.py`, `verify-import.py`, `build-testing-data.py` |
+| `scripts/` | **fork:** `dev-reset.sh` / `dev-import.sh` (rebuild the dev repo from the fixture in ~1 min), `dev-counts.py`, `verify-import.py`, `build-testing-data.py`, `inventory-facebook.py` (→ `docs/fork/facebook-cases.md`, the per-case status list) |
 | `testdata/meta/`, `tests/meta/`, `tests/ui/` | **fork:** case manifest, Go import harness (`go test ./tests/meta`, ~4 s), Playwright UI smoke tests — see `docs/fork/testing.md` |
 | `cmd/cmd.go` | CLI-only subcommands: `serve`, `help`, `reset`, `version`; anything else is an API endpoint name |
 
