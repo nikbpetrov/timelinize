@@ -100,6 +100,7 @@ func GetMessages(ctx context.Context, dsName string, dirEntry timeline.DirEntry,
 			if err := json.NewDecoder(file).Decode(&thread); err != nil {
 				return err
 			}
+			threadMeta := thread.metadata(dsName, threadPath, mctx.OwnerName)
 
 			for _, msg := range thread.Messages {
 				if filters.MaxMessagesPerConversation > 0 && threadMsgCounts[threadPath] >= filters.MaxMessagesPerConversation {
@@ -117,16 +118,7 @@ func GetMessages(ctx context.Context, dsName string, dirEntry timeline.DirEntry,
 				}
 
 				senderName := FixString(msg.SenderName)
-				sender := timeline.Entity{
-					Name: senderName,
-					Attributes: []timeline.Attribute{
-						{
-							Name:     dsName + "_name",
-							Value:    senderName,
-							Identity: true,
-						},
-					},
-				}
+				sender := participantEntity(dsName, senderName, threadPath)
 				msgText := FixString(msg.Content)
 				msgTimestamp := time.UnixMilli(msg.TimestampMS).UTC()
 
@@ -278,6 +270,15 @@ func GetMessages(ctx context.Context, dsName string, dirEntry timeline.DirEntry,
 					continue
 				}
 
+				if len(threadMeta) > 0 {
+					if item.Metadata == nil {
+						item.Metadata = make(timeline.Metadata)
+					}
+					for k, v := range threadMeta {
+						item.Metadata[k] = v
+					}
+				}
+
 				ig := &timeline.Graph{Item: item}
 
 				for _, attach := range attachments {
@@ -293,21 +294,12 @@ func GetMessages(ctx context.Context, dsName string, dirEntry timeline.DirEntry,
 				if quoted != nil {
 					ig.ToItem(timeline.RelQuotes, quoted)
 				}
-				for _, recipient := range thread.sentTo(senderName, dsName) {
+				for _, recipient := range thread.sentTo(sender, dsName, threadPath) {
 					ig.ToEntity(timeline.RelSent, recipient)
 				}
 				for _, reaction := range msg.Reactions {
-					actor := FixString(reaction.Actor)
-					ig.FromEntityWithValue(&timeline.Entity{
-						Name: actor,
-						Attributes: []timeline.Attribute{
-							{
-								Name:     dsName + "_name",
-								Value:    actor,
-								Identity: true,
-							},
-						},
-					}, timeline.RelReacted, FixString(reaction.Reaction))
+					actor := participantEntity(dsName, FixString(reaction.Actor), threadPath)
+					ig.FromEntityWithValue(&actor, timeline.RelReacted, FixString(reaction.Reaction))
 				}
 
 				params.Pipeline <- ig

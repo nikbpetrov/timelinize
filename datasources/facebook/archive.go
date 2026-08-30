@@ -185,7 +185,7 @@ func (a Archive) FileImport(ctx context.Context, dirEntry timeline.DirEntry, par
 	}
 
 	// messages
-	err := GetMessages(ctx, "facebook", dirEntry, params, dsOpt.Filters, MessageContext{OwnerUsername: dsOpt.Username})
+	err := GetMessages(ctx, "facebook", dirEntry, params, dsOpt.Filters, MessageContext{OwnerUsername: dsOpt.Username, OwnerName: a.owner.Name})
 	if err != nil {
 		return err
 	}

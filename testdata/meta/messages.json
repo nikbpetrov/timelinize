@@ -1592,6 +1592,290 @@
           }
         ]
       }
+    },
+    {
+      "id": "fb-msg-deleted-user-1to1",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "1:1 thread whose counterpart deleted their account (sender/participant 'Facebook user', dir facebookuser_<id>)",
+      "why": "identity by name would merge every deleted person into one entity; the thread id is the only stable handle",
+      "select": {
+        "messages": [
+          {
+            "thread": "inbox/facebookuser_2081727591893798",
+            "all": true
+          },
+          {
+            "thread": "inbox/facebookuser_4461216637290711",
+            "all": true
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1371145417008
+            },
+            "count": 1,
+            "owner": "2081727591893798",
+            "data_text_contains": "liga",
+            "edges_out": [
+              {
+                "label": "sent",
+                "to_entity": "Nikolay Petrov"
+              }
+            ]
+          },
+          {
+            "where": {
+              "ts": 1374605646825
+            },
+            "count": 1,
+            "owner": "Nikolay Petrov",
+            "edges_out": [
+              {
+                "label": "sent",
+                "to_entity": "2081727591893798"
+              }
+            ],
+            "edges_out_count": {
+              "sent": 1
+            }
+          },
+          {
+            "where": {
+              "ts": 1634887099853
+            },
+            "count": 1,
+            "owner": "4461216637290711"
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-msg-deleted-user-in-group",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "marketplace thread with a deleted counterpart; only content is a system line from 'A contact'",
+      "why": "anonymous sender in a titled thread: entity per thread id, thread title kept",
+      "select": {
+        "messages": [
+          {
+            "thread": "archived_threads/hssain2beds2bathsroomonly_26569962889261237",
+            "all": true
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1718108729073
+            },
+            "count": 1,
+            "owner": "26569962889261237",
+            "metadata": {
+              "Thread title": "Hssain · 2 beds 2 baths Room only"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-msg-unnamed-participant",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "participant with an empty name, thread dir is only the numeric id, title empty",
+      "why": "older anonymisation: no name at all; must not create an entity named ''",
+      "select": {
+        "messages": [
+          {
+            "thread": "inbox/1085463558199386",
+            "ts": [
+              1471548002204,
+              1471426943343
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1471548002204
+            },
+            "count": 1,
+            "owner": "1085463558199386",
+            "data_text_contains": "Greenwich",
+            "edges_out": [
+              {
+                "label": "sent",
+                "to_entity": "Nikolay Petrov"
+              }
+            ]
+          },
+          {
+            "where": {
+              "ts": 1471426943343
+            },
+            "count": 1,
+            "owner": "Nikolay Petrov",
+            "edges_out": [
+              {
+                "label": "sent",
+                "to_entity": "1085463558199386"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-msg-self-thread",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "thread with yourself (single participant)",
+      "why": "owner is the only participant: no sent edges, no counterpart entity",
+      "select": {
+        "messages": [
+          {
+            "thread": "e2ee_cutover/nikolaypetrov_904946866251057",
+            "ts": [
+              1734433226899
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1734433226899
+            },
+            "count": 1,
+            "owner": "Nikolay Petrov",
+            "edges_out_count": {
+              "sent": 0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-msg-marketplace-title",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "1:1 marketplace conversation: title is '<Name> · <listing>' not the person's name",
+      "why": "the title carries the listing; the entity must still be the person",
+      "select": {
+        "messages": [
+          {
+            "thread": "archived_threads/arjay2beds2bathsroomonly_7650016228410023",
+            "all": true
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1718031329440
+            },
+            "count": 1,
+            "owner": "Arjay Dulay",
+            "data_text": "Hi, is this available?",
+            "metadata": {
+              "Thread title": "Arjay · 2 beds 2 baths Room only"
+            },
+            "edges_out": [
+              {
+                "label": "sent",
+                "to_entity": "Nikolay Petrov"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-msg-group-left",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "group you left: participants list is only you, senders are not in it",
+      "why": "senders outside the participant list still need entities; the thread is flagged partial",
+      "select": {
+        "messages": [
+          {
+            "thread": "inbox/bachataloverssofiachat_6338047269546821",
+            "ts": [
+              1758384351663,
+              1758555544273
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1758384351663
+            },
+            "count": 1,
+            "owner": "Kristina Mi",
+            "metadata": {
+              "Thread title": "Bachata Lovers Sofia Chat",
+              "Thread participants": "partial"
+            },
+            "edges_out": [
+              {
+                "label": "sent",
+                "to_entity": "Nikolay Petrov"
+              }
+            ],
+            "edges_out_count": {
+              "sent": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-msg-deleted-reactor",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "reaction from a deleted account",
+      "why": "reaction actors are anonymised too; the edge must come from the thread's anonymous entity",
+      "select": {
+        "messages": [
+          {
+            "thread": "message_requests/golemiatcat_2129992207062014",
+            "ts": [
+              1761734155879
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1761734155879
+            },
+            "count": 1,
+            "owner": "Lyubomira Dimitrova",
+            "metadata": {
+              "Message request": "true"
+            },
+            "edges_in": [
+              {
+                "label": "reacted",
+                "from_entity": "2129992207062014"
+              }
+            ]
+          }
+        ]
+      }
     }
   ],
   "checks": [
@@ -1631,6 +1915,21 @@
       "sql": "select count(*) from items where data_text is null and data_file is null and latitude is null and retrieval_key is null and id not in (select from_item_id from relationships where from_item_id is not null) and id not in (select to_item_id from relationships where to_item_id is not null)",
       "expect": 0,
       "_note": "pipeline prunes empty items without edges (upstream NOT IN NULL bug fixed on fork)"
+    },
+    {
+      "id": "no-empty-entity-names",
+      "sql": "select count(*) from entities where name = '' or name is null",
+      "expect": 0
+    },
+    {
+      "id": "anonymous-entities-identified-by-thread",
+      "sql": "select count(*) from entities e where e.name in ('Facebook user','Instagram user') and not exists (select 1 from entity_attributes ea join attributes a on a.id = ea.attribute_id where ea.entity_id = e.id and a.name like '%_thread_user')",
+      "expect": 0
+    },
+    {
+      "id": "named-entities-never-anonymous-identity",
+      "sql": "select count(*) from entities e join entity_attributes ea on ea.entity_id = e.id join attributes a on a.id = ea.attribute_id where a.name like '%_thread_user' and e.name not in ('Facebook user','Instagram user')",
+      "expect": 0
     }
   ]
 }

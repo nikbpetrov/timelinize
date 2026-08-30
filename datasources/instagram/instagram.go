@@ -193,6 +193,7 @@ func (c *Client) FileImport(ctx context.Context, dirEntry timeline.DirEntry, par
 	// messages
 	err = facebook.GetMessages(ctx, "instagram", dirEntry, params, dsOpt.Filters, facebook.MessageContext{
 		OwnerUsername: personalInfo.Username.Value,
+		OwnerName:     owner.Name,
 		OwnStory:      storyIdx.lookup(dirEntry, owner),
 	})
 	if err != nil {

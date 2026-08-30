@@ -63,6 +63,10 @@ type MessageContext struct {
 	// used to recognize links to the owner's own content.
 	OwnerUsername string
 
+	// The archive owner's display name as it appears in sender_name/participants,
+	// used to tell the counterpart of a 1:1 thread from the owner.
+	OwnerName string
+
 	// OwnStory, if set, returns an item representing the owner's story that was
 	// published closest to t (within a tolerance), or nil if there is none. Used to
 	// link DMs that share the owner's own story to the imported story item instead

@@ -339,29 +339,62 @@ type fbMessengerThread struct {
 	} `json:"messages"`
 	Title              string `json:"title"`
 	IsStillParticipant bool   `json:"is_still_participant"`
+	IsPending          bool   `json:"is_pending"` // message requests
 	ThreadPath         string `json:"thread_path"`
 	MagicWords         []any  `json:"magic_words"`
 }
 
-func (thread fbMessengerThread) sentTo(senderName, dsName string) []*timeline.Entity {
+// sentTo returns the recipients of a message: every participant except the sender.
+// Anonymous participants ("Facebook user", "") resolve to the thread's anonymous entity.
+func (thread fbMessengerThread) sentTo(sender timeline.Entity, dsName, threadPath string) []*timeline.Entity {
 	var sentTo []*timeline.Entity
+	seen := make(map[string]bool)
 	for _, participant := range thread.Participants {
-		participantName := FixString(participant.Name)
-		if participantName == senderName {
+		e := participantEntity(dsName, FixString(participant.Name), threadPath)
+		if sameParticipant(e, sender) {
 			continue
 		}
-		sentTo = append(sentTo, &timeline.Entity{
-			Name: participantName,
-			Attributes: []timeline.Attribute{
-				{
-					Name:     dsName + "_name",
-					Value:    participantName,
-					Identity: true,
-				},
-			},
-		})
+		key := e.Attributes[0].Name + "=" + fmt.Sprint(e.Attributes[0].Value)
+		if seen[key] {
+			continue // several anonymous participants collapse into one entity
+		}
+		seen[key] = true
+		sentTo = append(sentTo, &e)
 	}
 	return sentTo
+}
+
+// metadata returns thread-level facts worth keeping on every message of the thread:
+//   - "Thread title" when the title is not simply the counterpart's name (marketplace
+//     conversations, group chats)
+//   - "Message request": true for threads in message_requests (is_pending)
+//   - "Thread participants": "partial" when a sender is not in the participant list
+//     (the owner left the group and Facebook truncated the list)
+func (thread fbMessengerThread) metadata(dsName, threadPath, ownerName string) timeline.Metadata {
+	meta := make(timeline.Metadata)
+	title := FixString(thread.Title)
+	participants := make(map[string]bool)
+	var counterpart string
+	for _, p := range thread.Participants {
+		name := FixString(p.Name)
+		participants[name] = true
+		if name != ownerName && counterpart == "" {
+			counterpart = name
+		}
+	}
+	if title != "" && title != counterpart && !(counterpart == "" && title == ownerName) {
+		meta["Thread title"] = title
+	}
+	if thread.IsPending {
+		meta["Message request"] = true
+	}
+	for _, m := range thread.Messages {
+		if name := FixString(m.SenderName); !participants[name] && !isAnonymousName(name) {
+			meta["Thread participants"] = "partial"
+			break
+		}
+	}
+	return meta
 }
 
 type fbAlbumMeta struct {
