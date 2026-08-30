@@ -1923,6 +1923,13 @@ function renderMessageItem(item, options) {
 				} else if (item.metadata) {
 					rel.to_item.metadata = item.metadata;
 				}
+				// the promoted attachment may not carry a sender or time of its own (e.g. a
+				// shared-link bookmark, which has no owner); it is displayed as the message,
+				// so inherit those from the message it belongs to
+				rel.to_item.entity = rel.to_item.entity || item.entity;
+				rel.to_item.timestamp = rel.to_item.timestamp || item.timestamp;
+				rel.to_item.data_source_name = rel.to_item.data_source_name || item.data_source_name;
+				rel.to_item.data_source_title = rel.to_item.data_source_title || item.data_source_title;
 				// finally, replace the item with the related item that we spliced out
 				item = rel.to_item;
 				break;
@@ -1946,7 +1953,11 @@ function renderMessageItem(item, options) {
 	$('.data-source-icon', elem).title = item.data_source_title;
 	$('.data-source-icon', elem).dataset.bsToggle = "tooltip";
 	$('.view-item-link', elem).href = `/items/${item.repo_id}/${item.id}`;
-	$('.view-entity-link', elem).href = `/entities/${item.repo_id}/${item.entity.id}`;
+	if (item.entity?.id) {
+		$('.view-entity-link', elem).href = `/entities/${item.repo_id}/${item.entity.id}`;
+	} else {
+		$('.view-entity-link', elem)?.remove();
+	}
 
 	if (options?.withToRelations && item.related) {
 		const toContainer = document.createElement('div');
