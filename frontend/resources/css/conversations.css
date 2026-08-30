@@ -110,3 +110,11 @@ body {
 .footer {
 	padding: 1rem 0;
 }
+/* fork: system notices and call records are messages with metadata Kind=system|call */
+.chat-item.chat-system .chat-bubble,
+.chat-item.chat-call .chat-bubble {
+	background: transparent;
+	border: 1px dashed var(--tblr-border-color);
+	color: var(--tblr-secondary);
+	font-style: italic;
+}

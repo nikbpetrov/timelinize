@@ -66,6 +66,9 @@ type ItemSearchParams struct {
 	// TODO: a way to get items with EntityID, but also any relation FromEntityID or ToEntityID...
 	ToAttributeID []int64 `json:"to_attribute_id,omitempty"`
 	ToEntityID    []int64 `json:"to_entity_id,omitempty"`
+	// Only items that are in one of these collections (an in_collection relationship
+	// from the item to the collection item), e.g. the messages of a group chat thread.
+	InCollection []int64 `json:"in_collection,omitempty"`
 
 	// filter by relationship to other items
 	// TODO: We can probably wrap ToAttributeID, ToEntityID, and maybe Astructured into this?
@@ -597,6 +600,13 @@ func (tl *Timeline) prepareSearchQuery(ctx context.Context, params ItemSearchPar
 			or("relationships.to_entity_id=?", v)
 		}
 	})
+	if len(params.InCollection) > 0 {
+		and(func() {
+			for _, v := range params.InCollection {
+				or("items.id IN (SELECT ic.from_item_id FROM relationships ic JOIN relations rl ON rl.id = ic.relation_id WHERE rl.label = 'in_collection' AND ic.to_item_id=?)", v)
+			}
+		})
+	}
 
 	// TODO: Use BETWEEN maybe
 

@@ -1824,7 +1824,7 @@
       "id": "fb-msg-group-left",
       "source": "facebook",
       "entity": "message",
-      "subtype": "group you left: participants list is only you, senders are not in it",
+      "subtype": "group you left: participants list is only you, senders are not in it — still a group (collection), flagged partial",
       "why": "senders outside the participant list still need entities; the thread is flagged partial",
       "select": {
         "messages": [
@@ -1851,12 +1851,15 @@
             },
             "edges_out": [
               {
-                "label": "sent",
-                "to_entity": "Nikolay Petrov"
+                "label": "in_collection",
+                "to_item": {
+                  "classification": "collection",
+                  "data_text": "Bachata Lovers Sofia Chat"
+                }
               }
             ],
             "edges_out_count": {
-              "sent": 1
+              "sent": 0
             }
           }
         ]
@@ -2899,6 +2902,77 @@
           }
         ]
       }
+    },
+    {
+      "id": "fb-msg-group-basic",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "group thread (21 participants): messages point at one collection item that carries the participants",
+      "why": "a sent edge to every participant on every message does not scale and makes the conversation view unusable for groups",
+      "select": {
+        "messages": [
+          {
+            "thread": "archived_threads/basketballcuppers_4116085855122962",
+            "ts": [
+              1635354138673,
+              1624799824677
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1635354138673
+            },
+            "count": 1,
+            "owner": "Rory Halsall",
+            "metadata": {
+              "Thread title": "Basketball Cuppers"
+            },
+            "edges_out": [
+              {
+                "label": "in_collection",
+                "to_item": {
+                  "classification": "collection",
+                  "data_text": "Basketball Cuppers"
+                }
+              }
+            ],
+            "edges_out_count": {
+              "sent": 0,
+              "in_collection": 1
+            }
+          },
+          {
+            "where": {
+              "classification": "collection",
+              "data_text_contains": "Basketball Cuppers"
+            },
+            "count": 1,
+            "data_text": "Basketball Cuppers",
+            "owner": "Nikolay Petrov",
+            "metadata": {
+              "Kind": "thread",
+              "Participants": "21"
+            },
+            "edges_out": [
+              {
+                "label": "sent",
+                "to_entity": "Rory Halsall"
+              },
+              {
+                "label": "sent",
+                "to_entity": "Jeremy Stroud"
+              }
+            ],
+            "edges_out_count": {
+              "sent": 21
+            }
+          }
+        ]
+      }
     }
   ],
   "checks": [
@@ -2962,6 +3036,11 @@
     {
       "id": "one-entity-per-named-person",
       "sql": "select count(*) from (select a.value from entities e join entity_attributes ea on ea.entity_id=e.id join attributes a on a.id=ea.attribute_id where a.name='facebook_name' group by a.value having count(distinct e.id) > 1)",
+      "expect": 0
+    },
+    {
+      "id": "group-messages-not-fanned-out",
+      "sql": "select count(*) from relationships r join relations rel on rel.id=r.relation_id join items i on i.id=r.from_item_id where rel.label='sent' and r.to_attribute_id is not null and exists (select 1 from relationships x join relations xr on xr.id=x.relation_id where xr.label='in_collection' and x.from_item_id=i.id)",
       "expect": 0
     }
   ]

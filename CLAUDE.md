@@ -137,6 +137,7 @@ Fork: `origin` = github.com/nikbpetrov/timelinize, `upstream` = github.com/timel
 | Python ML sidecar (embeddings/classify) | `tlzapp/python/server/server.py`, `timeline/ml.go` |
 | Demo-mode obfuscation (display copies only) | `timeline/obfuscation.go` |
 | **Fork:** shares -> bookmarks, placeholders, own-story match, resolver call | `datasources/facebook/shares.go`, `messages.go` (share block) |
+| **Fork:** Messenger message classifier (calls, group/thread events, locations, bare URLs), per-thread anonymous identities, group threads as collections, E2EE export walker | `datasources/facebook/classify.go` (+ `_test.go`), `identity.go`, `messages.go` (`messageWalker.processThread`), `e2ee.go`; plan/status `docs/fork/messenger-plan.md`, `facebook-cases.md` |
 | **Fork:** link resolver, cache, statuses | `internal/linkfetch/linkfetch.go`; options `timeline/linkfetch.go` |
 | **Fork:** Immich store: options, upload job, evict, `EnsureDataFile` restore | `timeline/immich.go`, `internal/immich/client.go`, table `immich_assets` in `schema.sql` |
 | **Fork:** persisted import counters, `FinalMessage`, job double-start fix | `timeline/imports.go` (`ImportCounters`), `jobs.go` (`startJob`) |

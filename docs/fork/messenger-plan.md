@@ -139,7 +139,7 @@ No calls, no system events, no shares in this format (they arrive as `text`/`lin
 Existing message cases (`fb-msg-text-with-reaction`, `-photo`, `-video`, `-gif`, `-audio`, `-sticker`, `-share-*`,
 `-unsent`, `-taken-down`, `-ip-key`, `-e2ee-thread`, `-archived-thread`, `-filtered-thread`, `-message-requests`) stay.
 
-## 7. Execution order (each step = code + cases + green harness + dev-reset)
+## 7. Execution order (each step = code + cases + green harness + dev-reset) — **all eight steps landed 2026-08-30** (commits `2bace51` … `group threads`); §8 decisions: 1 keep as system, 2 collection, 3 yes, 4 yes; link fetching stays off at import time (bookmarks keep `Status: unresolved` for a later async pass)
 
 1. **Restructure tests** (§6): manifest split, `TLZ_CASES`, whole-thread and E2EE selectors, rebuild fixture.
    Nothing changes in the importer yet; all existing cases stay green.

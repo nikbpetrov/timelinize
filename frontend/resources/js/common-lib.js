@@ -1938,6 +1938,11 @@ function renderMessageItem(item, options) {
 	}
 
 	const elem = cloneTemplate('#tpl-message');
+	// system notices (group membership changes, call events) and call records are kept as
+	// messages with a Kind (fork); show them as a muted line rather than a chat bubble
+	if (item.metadata?.Kind == 'system' || item.metadata?.Kind == 'call') {
+		elem.classList.add('chat-' + item.metadata.Kind);
+	}
 	$('.message-sender', elem).innerText = item.entity?.name || item.entity?.attribute?.value;
 	if (item.entity?.id == 1) {
 		// if current user (presumably, entity ID 1 -- though this could change later) is

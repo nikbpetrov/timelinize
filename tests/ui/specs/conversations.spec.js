@@ -32,20 +32,20 @@ for (const c of manifest.cases) {
 			if (x.count === 0) continue;
 			for (const it of resolveWhere(index[c.source], x.where)) {
 				if (it.classification !== 'message') continue;
-				const ids = participants(it);
-				if (ids.length < 2) continue;
-				if (ids.length > 2) {
-					// group threads: the conversation view renders nothing for them (backlog #19); skip
-					// rather than hide it behind a green check
-					test.info().annotations.push({ type: 'skipped group thread', description: `${ids.length} participants (item ${it.id})` });
-					continue;
+				// group threads (fork): the message is in_collection of the thread's collection item
+				const thread = (it.related || []).find(rel => rel.label === 'in_collection' && rel.to_item);
+				let url;
+				if (thread) {
+					url = `/conversations?thread=${thread.to_item.id}`;
+				} else {
+					const ids = participants(it);
+					if (ids.length < 2) continue;
+					// two-party threads are opened exactly (only_entity)
+					url = `/conversations?entity=${encodeURIComponent(ids.join(','))}&only_entity=true`;
 				}
-				const key = ids.join(',');
-				if (seen.has(key)) continue;
-				seen.add(key);
-				// two-party threads are opened exactly (only_entity); group threads list every
-				// participant the API returned (capped by related=1), so match any conversation with them
-				await page.goto(`/conversations?entity=${encodeURIComponent(key)}&only_entity=true`);
+				if (seen.has(url)) continue;
+				seen.add(url);
+				await page.goto(url);
 				// at least one chat bubble must render
 				await expect(page.locator('.chat-bubble').first()).toBeVisible({ timeout: 15_000 });
 				opened++;

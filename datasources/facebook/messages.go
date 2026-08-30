@@ -144,6 +144,29 @@ func (w *messageWalker) processThread(thread fbMessengerThread, threadPath strin
 	threadMeta := thread.metadata(w.dsName, threadPath, w.mctx.OwnerName)
 	pseudo := collectPseudoReactions(thread.Messages)
 
+	// Group chats: one collection item per thread carries the participants (one `sent`
+	// edge each, once) and every message points at it with in_collection — instead of a
+	// `sent` edge to every participant on every message. A thread whose participant list
+	// was truncated to the owner (they left the group) is a group too.
+	var threadColl *timeline.Item
+	if len(thread.Participants) > 2 || threadMeta["Thread participants"] == "partial" {
+		threadColl = thread.collection(w.dsName, threadPath, w.mctx.OwnerName)
+		cg := &timeline.Graph{Item: threadColl}
+		for _, p := range thread.Participants {
+			e := participantEntity(w.dsName, FixString(p.Name), threadPath)
+			if isAnonymousName(w.mctx.OwnerName) || e.Name != w.mctx.OwnerName {
+				cg.ToEntity(timeline.RelSent, &e)
+			}
+		}
+		w.params.Pipeline <- cg
+		// messages reference the collection by id only; the pipeline fuses it with the one above
+		threadColl = &timeline.Item{
+			ID:             threadColl.ID,
+			Classification: timeline.ClassCollection,
+			Content:        threadColl.Content,
+		}
+	}
+
 	for _, msg := range thread.Messages {
 		if w.filters.MaxMessagesPerConversation > 0 && w.threadMsgCounts[threadPath] >= w.filters.MaxMessagesPerConversation {
 			break
@@ -300,8 +323,12 @@ func (w *messageWalker) processThread(thread fbMessengerThread, threadPath strin
 		if quoted != nil {
 			ig.ToItem(timeline.RelQuotes, quoted)
 		}
-		for _, recipient := range thread.sentTo(sender, w.dsName, threadPath) {
-			ig.ToEntity(timeline.RelSent, recipient)
+		if threadColl != nil {
+			ig.ToItem(timeline.RelInCollection, threadColl)
+		} else {
+			for _, recipient := range thread.sentTo(sender, w.dsName, threadPath) {
+				ig.ToEntity(timeline.RelSent, recipient)
+			}
 		}
 		for _, reaction := range msg.Reactions {
 			actor := participantEntity(w.dsName, FixString(reaction.Actor), threadPath)

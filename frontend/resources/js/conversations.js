@@ -129,6 +129,13 @@ async function renderConversationsPage() {
 		}
 	}
 
+	// a group chat thread (fork): its messages point at one collection item, so the
+	// conversation is the collection, not a set of entities
+	if (queryParam("thread")) {
+		await renderSingleConversation();
+		return;
+	}
+
 	const singleConversation = $('#selected-entities-only').checked;
 
 	if (singleConversation) {
@@ -169,6 +176,8 @@ async function renderConversations() {
 	$('#convos-duration').innerText = duration.toHuman();
 
 	// TODO: display something nice if there's no results
+
+	await renderGroupThreads();
 
 	for (const convo of results) {
 		// put repo owner first; they're most likely to be in all the conversations,
@@ -233,6 +242,47 @@ async function renderConversations() {
 }
 
 
+// renderGroupThreads lists group chat threads (collection items with Kind: thread) as cards
+// linking to the thread view; upstream conversations are keyed by the exact set of people
+// involved, which does not work for groups with dozens of participants.
+async function renderGroupThreads() {
+	const params = {
+		classification: ['collection'],
+		data_text: messageSubstring(),
+		limit: 100,
+		related: 1,
+		flat: true,
+	};
+	commonFilterSearchParams(params);
+	delete params.entity_id;
+	let results;
+	try {
+		results = await app.SearchItems(params);
+	} catch (err) {
+		console.error("loading group threads:", err);
+		return;
+	}
+	const threads = (results.items || []).filter(it => it.metadata?.Kind == 'thread');
+	if (!threads.length) return;
+	const entityIDs = entitiesInvolved();
+	for (const thread of threads) {
+		const participants = (thread.related || []).filter(rel => rel.label == 'sent' && rel.to_entity).map(rel => rel.to_entity);
+		if (entityIDs?.length && !entityIDs.every(id => id == 1 || participants.some(p => p.id == id))) continue;
+		const elem = cloneTemplate('#tpl-convo');
+		elem.classList.add('group-thread');
+		$('.card-link', elem).href = `/conversations?thread=${thread.id}`;
+		$('.card-title', elem).innerText = thread.data_text || 'Group chat';
+		const n = thread.metadata?.Participants || participants.length;
+		$('.convo-preview', elem).innerText = `Group chat · ${n} participants`;
+		$('.convo-datetime', elem).innerText = thread.data_source_title || thread.data_source_name || '';
+		const maxAvatars = 5;
+		const shown = participants.slice(0, maxAvatars);
+		let more = participants.length > maxAvatars ? `<span title="${participants.length - maxAvatars} more" class="avatar avatar-sm avatar-rounded">+${participants.length - maxAvatars}</span>` : '';
+		$('.avatar-list', elem).innerHTML = shown.map(e => `<span title="${e.name || e.attribute?.value || ''}">${avatar(true, e, "avatar-sm avatar-rounded")}</span>`).join("") + more;
+		$('#convos-container').append(elem);
+	}
+}
+
 async function renderSingleConversation() {
 	$('#convos-container').classList.add('d-none');
 	$('#showing-info').classList.add('d-none');
@@ -290,7 +340,18 @@ async function renderConversationChunk(direction) {
 			params.end_timestamp = until;
 		}
 		console.log("PARAMS:", params)
-		const results = await app.LoadConversation(params);
+		let results;
+		const threadID = Number(queryParam("thread"));
+		if (threadID) {
+			// group chat thread: every message is in_collection of the thread's collection item
+			delete params.entity_id;
+			params.in_collection = [threadID];
+			params.classification = params.classification?.length ? params.classification : ['message', 'document'];
+			params.flat = true;
+			results = await app.SearchItems(params);
+		} else {
+			results = await app.LoadConversation(params);
+		}
 		console.log("RESULTS:", results)
 		
 		
@@ -399,6 +460,9 @@ async function renderConversationChunk(direction) {
 // update filters when convo card is clicked; the conversations page with the convo cards is basically a glorified filter control
 on('click', '#convos-container .card-link', event => {
 	const convoCard = event.target.closest('.convo-card');
+	if (convoCard.classList.contains('group-thread')) {
+		return; // plain link to /conversations?thread=<id>
+	}
 	const ts = $('.entity-input').tomselect;
 	ts.clear();
 	ts.clearOptions();

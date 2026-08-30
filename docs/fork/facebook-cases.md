@@ -70,36 +70,36 @@ Legend: ✔ represented as intended · ⚠ partially (details in the row) · ✘
 |---|---|---|---|---|---|---|
 | T1 | folders `inbox`, `archived_threads`, `filtered_threads`, `message_requests`, `e2ee_cutover` | 884 / 15 / 87 / 24 / 113 threads | | all walked | ✔ | `fb-msg-*-thread` |
 | T2 | media folders `messages/photos/` (49), `messages/stickers_used/` (1,123) | | files read through the message `uri`s | ✔ | |
-| T3 | group threads (>2 participants) | 263 | | messages + `sent` edges to every other participant; UI conversation view empty (backlog #24) | ⚠ | |
+| T3 | group threads (>2 participants) | 263 | one `collection` item per thread (Kind: thread, `sent` edges to every participant once); every message `in_collection` of it, no per-message `sent` fan-out; `/conversations?thread=<id>` | ✔ | `fb-msg-group-basic`, `-group-left` |
 | T4 | plain text | 661k | | `message` text | ✔ | `fb-msg-text-with-reaction` |
-| T5 | text that is **only a URL** | 16,142 | hassanfans @ 1632003784052 | kept as text; no bookmark (only `share.link` makes one) | ⚠ | |
+| T5 | text that is **only a URL** | 16,142 | hassanfans @ 1632003784052 | text kept **and** a `bookmark` attached (same code path as a share; not fetched) | ✔ | `fb-msg-bare-url` |
 | T6 | text containing a URL | 7,248 | | text kept | ✔ | |
 | T7 | `reactions[]` | 62k | | `reacted(emoji)` edge from the actor | ✔ | `fb-msg-text-with-reaction` |
-| T8 | pseudo-message `Reacted X to your message` (note trailing space) | 28 | aleksandrinageorgieva @ 1659267725994 | imported as a message (duplicate of the edge) | ⚠ #25 | `fb-msg-pseudo-reaction` |
+| T8 | pseudo-message `Reacted X to your message` (note trailing space) | 28 | aleksandrinageorgieva @ 1659267725994 | dropped; the `reacted` edge on the target carries the pseudo-message time as `Start` | ✔ | `fb-msg-pseudo-reaction` |
 | T9 | `photos[]` (1 or many per message) | 44,407 | | first photo = the message, rest attached; file read from the archive | ✔ | `fb-msg-photo`, `-photo-e2ee` |
-| T10 | `photos[]` with a **bare filename** `uri` (2017 e2ee_cutover threads) | 73 | ivelinastoanova @ 1491393859348 | item without data (file not in archive) | ✘ backlog #11 | |
+| T10 | `photos[]` with a **bare filename** `uri` (2017 e2ee_cutover threads) | 73 | ivelinastoanova @ 1491393859348 | no item; `Missing attachments: n` on the message | ✔ | `fb-msg-attachment-missing` |
 | T11 | `videos[]` | 1,689 | | attachment | ✔ | `fb-msg-video` |
-| T12 | `videos[]` / `gifs[]` / `sticker` with an **https fbcdn URL** instead of a file | 18 / 2 / 2 | marinaaneva @ 1544731658122 | attachment without data (expired CDN links) | ✘ → mark unavailable | |
+| T12 | `videos[]` / `gifs[]` / `sticker` with an **https fbcdn URL** instead of a file | 18 / 2 / 2 | marinaaneva @ 1544731658122 | `bookmark` with `Kind: media`, `Status: expired` | ✔ | `fb-msg-attachment-expired-url` |
 | T13 | `audio_files[]` (voice notes, .aac / audio in .mp4) | 982 | | attachment typed `audio/*` via ffprobe | ✔ | `fb-msg-audio` |
 | T14 | `gifs[]` | 1,323 | | attachment | ✔ | `fb-msg-gif` |
 | T15 | `sticker` (`ai_stickers` key ignored) | 11,134 | | attachment | ✔ | `fb-msg-sticker` |
-| T16 | `files[]` — docx 264, pdf 116, jpg 86, doc, xlsx, pptx, rar, code… | 617 | aneliachekakchieva @ 1581942443759 | **not imported** (struct has no field) | ✘ | `fb-msg-file` |
+| T16 | `files[]` — docx 264, pdf 116, jpg 86, doc, xlsx, pptx, rar, code… | 617 | aneliachekakchieva @ 1581942443759 | `document` attachment items (a file-only message *is* the document) | ✔ | `fb-msg-file`, `-file-docx` |
 | T17 | `share.link` (± `share_text`): external 3,063 · YouTube 877 · 9gag 616 · FB video 557 · FB photo 458 · raw fbcdn 298 · FB group post 273 · IG reel 249 · FB reel 204 · FB event 173 · profile/page 86 · gif 49 · IG post 24 | 7,111 | | `bookmark` keyed by canonical URL, Kind, Status (FB pages/groups/events `metadata_only`, IG/YouTube fetchable) | ✔ | `fb-msg-share-*` |
 | T18 | `share.share_text` only, no link | 37 | | ignored (share `isEmpty`) | — | |
 | T19 | placeholder `X sent an attachment.` | 3,782 | borovec2021 @ 1637954078397 | dropped | ✔ | `fb-msg-share-*` |
-| T20 | `call_duration` + text (`The video call ended.` …) | 1,733 | borovec2021 @ 1638201291531 | text message only; duration ignored | ⚠ | `fb-msg-call` |
-| T21 | `missed: true` (`X missed your call.`) | 284 (855 texts) | aneliachekakchieva @ 1553270012624 | text message only | ⚠ | `fb-msg-missed-call` |
-| T22 | `X sent a location.` (+ `share.link` to bing.com/maps) | 45 | alekskrsteva @ 1674988827098 | text + bookmark; **no coordinates** | ⚠ | `fb-msg-location-share` |
+| T20 | `call_duration` + text (`The video call ended.` …) | 1,733 | borovec2021 @ 1638201291531 | message with `Kind: call`, `Direction` (outgoing/incoming/group), `Duration`, `Missed`, `Video`, `Timespan` = start + duration | ✔ | `fb-msg-call*` |
+| T21 | `missed: true` (`X missed your call.`) | 284 (855 texts) | aneliachekakchieva @ 1553270012624 | same, `Missed: true` (flag **or** duration 0 with a "missed" sentence) | ✔ | `fb-msg-missed-call`, `-call-missed-*` |
+| T22 | `X sent a location.` (+ `share.link` to bing.com/maps) | 45 | alekskrsteva @ 1674988827098 | `Kind: location`; coordinates on the item when the Bing link has `where1=lat,lon`, else `Address` metadata; no bookmark | ✔ | `fb-msg-location-*` |
 | T23 | `is_unsent` without content | 1,341 | | skipped | ✔ | `fb-msg-unsent` |
-| T24 | `is_unsent` **with** content | 52 | bachataloverssofiachat @ 1714857435140 | imported as a normal message (flag not read) | ⚠ | |
+| T24 | `is_unsent` **with** content | 52 | bachataloverssofiachat @ 1714857435140 | dropped (`is_unsent` wins over content) | ✔ | `fb-msg-unsent-with-content` |
 | T25 | `is_taken_down` | 8 | | skipped | ✔ | `fb-msg-taken-down` |
-| T26 | `ip` on old messages | 13,057 | | ignored | — (could be metadata) | `fb-msg-ip-key` |
+| T26 | `ip` on old messages | 13,057 | `IP` metadata on messages that have content | ✔ | `fb-msg-ip-metadata` |
 | T27 | message with **no content at all** (sender + timestamp + flags) | 10,501 | hssain… @ 1718108732832 | skipped | ✔ | |
-| T28 | group system messages: member added 4,204 · left 954 · named 220 · nickname 123 · removed 60 · photo 53 · pinned 9 | 5,623 | basketballcuppers @ 1623278176675 | imported as text messages from the actor ("A contact removed…") | ⚠ drop or type as events | |
-| T29 | system: `You are now connected on Messenger` (11), waves (4), polls (1) | 16 | | text messages | ⚠ | |
+| T28 | group system messages: member added 4,204 · left 954 · named 220 · nickname 123 · removed 60 · photo 53 · pinned 9 | 5,623 | basketballcuppers @ 1623278176675 | message with `Kind: system`, `Event` (member_added/left/removed, renamed, created, photo_changed, admin), `Subject`; muted line in the chat view | ✔ | `fb-msg-group-event-*` |
+| T29 | system: `You are now connected on Messenger` (11), waves (4), polls (1) | 16 | dropped, with nickname/theme/pin/emoji/moderation notices | ✔ | `fb-msg-thread-event-*-dropped` |
 | T30 | `is_geoblocked_for_viewer`, `is_unsent_image_by_messenger_kid_parent` (always false), `is_still_participant`, `magic_words` | all | | ignored | — | |
 | T31 | `groups/your_group_messages/<id>.json` (1 thread, 6 msgs; same schema; thread also in inbox) | 1 | | not walked | — (duplicate) | |
-| T32 | **`data_messenger_e2e/`** — separate E2EE export: 97 threads (49 empty), 9,165 messages, camelCase (`senderName, timestamp, text, type ∈ text/media/link/placeholder, media[].uri, reactions[], isUnsent`), 1,221 media (jpeg 714, mp4 388, ogg 105, gif 20, webp 7; 43 without extension missing) | 9,165 | Anelia Chekakchieva_40.json | **not parsed at all** | ✘ | |
+| T32 | **`data_messenger_e2e/`** — separate E2EE export: 97 threads (49 empty), 9,165 messages, camelCase (`senderName, timestamp, text, type ∈ text/media/link/placeholder, media[].uri, reactions[], isUnsent`), 1,221 media (jpeg 714, mp4 388, ogg 105, gif 20, webp 7; 43 without extension missing) | 9,165 | Anelia Chekakchieva_40.json | recognized as a `facebook` import root; converted to the main shape (media by extension, placeholder → unsent) and fed through the same walker; owner = the participant present in every thread | ✔ | `fb-e2ee-*` |
 
 ## 4. Other activity families (own content that is not a post or a message)
 

@@ -41,9 +41,9 @@ Fixed on the fork: #1 (direct read in `fillItem`), #2, #4 (counters/verify make 
 | 21 | A DM linking your own story produced a duplicate story item when the stories loop and the message landed in concurrent pipeline batches | `datasources/instagram/instagram.go` | **fixed** (retrieval key `instagram::story::<uri>`) |
 | 22 | Voice notes (audio-only MP4/MOV, `.aac`) sniffed as `video/mp4`: thumbnail job fails (HTTP 500 on the item page), Immich rejects them | `timeline/pipeline.go` | **fixed** (ffprobe after download → `audio/mp4`) |
 | 23 | Shared links in Facebook posts became nameless `location` items (invisible, and pruned once #19 works) | `archive.go` external_context | **fixed** (bookmark keyed by canonical URL, like DM shares) |
-| 24 | Group-thread conversations (Messenger groups, 10+ participants) render nothing in the conversation view; two-party threads are fine | `frontend/resources/js/conversations.js` / `timeline/conversations.go` | open; the UI test skips group threads with an annotation |
-| 25 | Reaction pseudo-messages ("Reacted X to your message", "Liked a message") are imported as messages although the reaction is already an edge on your message (1,031 in the IG export) | `messages.go` | open (cases `ig-msg-pseudo-reaction`, `-pseudo-like`, `fb-msg-pseudo-reaction`) |
-| 26 | Not imported at all: Messenger `files[]` attachments (549), call durations, shared locations' coordinates, the `ip` field | importers | open (cases carry `known_issue`); life events and event shares done 2026-08-30 (`fb-post-life-event*`, `fb-post-event-*`) |
+| 24 | Group-thread conversations (Messenger groups, 10+ participants) render nothing in the conversation view; two-party threads are fine | `frontend/resources/js/conversations.js` / `timeline/conversations.go` | **fixed** 2026-08-30: group threads are a `collection` item (Kind: thread) carrying the participants; messages point at it with `in_collection`; `/conversations?thread=<id>` renders them via `search-items` `in_collection`; group cards on the conversations page |
+| 25 | Reaction pseudo-messages ("Reacted X to your message", "Liked a message") are imported as messages although the reaction is already an edge on your message (1,031 in the IG export) | `messages.go` | **fixed** 2026-08-30: dropped by the classifier; the `reacted` edge gets the pseudo-message's time as `Start` |
+| 26 | Not imported at all: Messenger `files[]` attachments (549), call durations, shared locations' coordinates, the `ip` field | importers | **fixed** 2026-08-30 for messages: `files[]` → `document` items, calls carry Duration/Direction/Missed, locations carry coordinates or an Address, `ip` → IP metadata; life events and event shares done (`fb-post-life-event*`, `fb-post-event-*`) |
 | 15 | `evict` while a thumbnails job runs restores the files it reads (local = cache); the job framework has no ordering | `timeline/immich.go` | documented; run evict after thumbnails |
 
 ## Dev filters (added on fork)
@@ -70,4 +70,6 @@ Facebook export note: `ground-truth/fb/data` has **no posts JSON and no stories*
 
 - Gold exports live under `/mnt/photos/timelinize/ground-truth/<source>/`; the Timelinize repo is disposable (schema still changing upstream).
 - Build/run/CLI recipe is in `CLAUDE.md`.
-
+| 27 | `FixString` zeroed every rune > 255, corrupting proper UTF-8 input (❤ reactions, the whole E2EE export) | `datasources/facebook/archive.go` | **fixed** (strings with runes > 255 or invalid Latin-1 round-trips are returned unchanged) |
+| 28 | Group chat collections have no timestamp of their own (like albums); the thread sits outside the timeline and is reached from the conversations page or a message | `messages.go` collection | open |
+| 29 | Instagram DMs run through the same classifier but its sentences are Facebook's ("Video chat ended" is typed `call` without a direction); IG wording, group events and `message_requests` need their own pass | `classify.go` | open (next: IG pass) |

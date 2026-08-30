@@ -18,7 +18,7 @@ run the tests with the same value.
 
 | Piece | Where | Run |
 |---|---|---|
-| Case manifests | `testdata/meta/messages.json` (46 cases, 7 checks, active), `posts.json` (29 cases, parked) | `TLZ_CASES=messages|posts|all` |
+| Case manifests | `testdata/meta/messages.json` (85 cases, 13 checks, active), `posts.json` (29 cases, parked) | `TLZ_CASES=messages|posts|all` |
 | Fixture builder | `scripts/build-testing-data.py` → `/mnt/photos/timelinize/testing-data/{instagram,facebook/data,facebook/data_messenger_e2e}` + `MANIFEST.md` | `python3 scripts/build-testing-data.py` (`TLZ_CASES=all` for everything) |
 | Import-level tests | `tests/meta/meta_test.go` (vocabulary in `tests/meta/README.md`) | `PKG_CONFIG_PATH=/usr/local/lib/pkgconfig GOTOOLCHAIN=go1.25.8 CGO_ENABLED=1 go test ./tests/meta` |
 | Same checks on a live repo | — | `TLZ_TEST_REPO=/mnt/photos/timelinize/repo-dev go test ./tests/meta` |
@@ -71,7 +71,7 @@ Case ids in `messages.json` / `posts.json`; ✔ = represented as intended, ⚠ =
 | dropped pin (Maps link) | 1 | `ig-msg-dropped-pin` | ⚠ no coordinates |
 | business auto-reply with URL in text | — | `ig-msg-typed-link-autoreply` | ✔ text kept |
 | `message_requests/` threads | 190 | `ig-msg-message-requests` | ✔ walked (upstream skipped the folder) |
-| group threads | 150 msgs | — | see backlog #19 (conversation view) |
+| group threads | 150 msgs | (Facebook cases `fb-msg-group-*`) | ✔ one `collection` (Kind: thread) per thread, messages `in_collection` |
 
 ### Facebook — posts (own)
 | Subtype | # | Case | Representation |
@@ -111,7 +111,7 @@ Case ids in `messages.json` / `posts.json`; ✔ = represented as intended, ⚠ =
 - A story linked from a DM produced a duplicate story item when the two graphs landed in concurrent batches.
 - Voice notes were typed `video/mp4` → thumbnail job errors (HTTP 500 on the item page) and Immich rejections.
 - Nameless shared links in posts were empty `location` items (invisible once pruning works) → now bookmarks.
-- Group-thread conversations render empty in the conversation view (backlog #19; the UI test skips them explicitly).
+- Group-thread conversations rendered empty in the conversation view (backlog #24; fixed with thread collections and `?thread=`).
 
 ## Not covered yet
 `data_messenger_e2e/` export format; Facebook `events/`, `groups/`, comments; Instagram group-thread events

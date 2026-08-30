@@ -373,6 +373,29 @@ func (thread fbMessengerThread) sentTo(sender timeline.Entity, dsName, threadPat
 	return sentTo
 }
 
+// collection returns the item that stands for a group chat thread: a collection named
+// after the thread, owned by the archive owner, keyed by the thread id.
+func (thread fbMessengerThread) collection(dsName, threadPath, ownerName string) *timeline.Item {
+	title := strings.TrimSpace(FixString(thread.Title))
+	if title == "" {
+		title = "Group chat"
+	}
+	owner := participantEntity(dsName, ownerName, threadPath)
+	return &timeline.Item{
+		ID:             "thread::" + threadID(threadPath),
+		Classification: timeline.ClassCollection,
+		Owner:          owner,
+		Content: timeline.ItemData{
+			Data: timeline.StringData(title),
+		},
+		Metadata: timeline.Metadata{
+			"Kind":         "thread",
+			"Thread":       threadPath,
+			"Participants": len(thread.Participants),
+		},
+	}
+}
+
 // metadata returns thread-level facts worth keeping on every message of the thread:
 //   - "Thread title" when the title is not simply the counterpart's name (marketplace
 //     conversations, group chats)

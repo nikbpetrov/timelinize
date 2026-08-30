@@ -26,7 +26,8 @@ async function itemPageMain() {
 	const item = results.items[0];
 	const dt = DateTime.fromISO(item.timestamp, { setZone: true });
 	
-	const {hourAngle, minuteAngle} = clockArms(dt.hour, dt.minute);
+	// items without a timestamp (albums, chat threads) have no time to draw
+	const {hourAngle, minuteAngle} = item.timestamp ? clockArms(dt.hour, dt.minute) : {hourAngle: 0, minuteAngle: 0};
 	$('#time .hour-hand').setAttribute('transform', `rotate(${hourAngle} 12 12)`);
 	$('#time .minute-hand').setAttribute('transform', `rotate(${minuteAngle} 12 12)`);
 	
