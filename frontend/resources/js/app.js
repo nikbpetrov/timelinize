@@ -169,6 +169,9 @@ const app = {
 	ItemDebug(params) {
 		return post("/api/item-debug", params, "QUERY");
 	},
+	ItemGraph(params) {
+		return post("/api/item-graph", params, "QUERY");
+	},
 	SearchItems(params) {
 		return post("/api/search-items", params);
 	},

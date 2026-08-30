@@ -68,6 +68,9 @@ func loadManifests(t *testing.T) manifest {
 		if err := json.Unmarshal(b, &m); err != nil {
 			t.Fatalf("parsing manifest %s: %v", name, err)
 		}
+		if merged.Sources == nil {
+			merged.Sources = m.Sources
+		}
 		for _, c := range m.Cases {
 			if seenCase[c.ID] {
 				t.Fatalf("duplicate case id %s in %s.json", c.ID, name)
@@ -89,8 +92,33 @@ func loadManifests(t *testing.T) manifest {
 // ---- manifest ------------------------------------------------------------------------------
 
 type manifest struct {
+	Sources map[string]struct {
+		Export   string `json:"export"`
+		Owner    string `json:"owner"`
+		Username string `json:"username"`
+	} `json:"sources"`
 	Cases  []testCase `json:"cases"`
 	Checks []check    `json:"checks"`
+}
+
+// ownerEntity is the repository owner (entity 1) the way the setup wizard would create it,
+// with the attributes each export uses to identify the owner (identifying, not identity: an
+// entity may only carry one identity attribute) so the imports merge into it.
+func (m manifest) ownerEntity() timeline.Entity {
+	var e timeline.Entity
+	e.Type = timeline.EntityPerson
+	for src, s := range m.Sources {
+		if e.Name == "" {
+			e.Name = s.Owner
+		}
+		if s.Username != "" {
+			e.Attributes = append(e.Attributes, timeline.Attribute{Name: src + "_username", Value: s.Username, Identifying: true})
+		}
+		if s.Owner != "" {
+			e.Attributes = append(e.Attributes, timeline.Attribute{Name: src + "_name", Value: s.Owner, Identifying: true})
+		}
+	}
+	return e
 }
 
 type testCase struct {
@@ -576,7 +604,7 @@ func fixtureDir() string {
 }
 
 // importFixture creates a temp repo and imports both sources of the fixture with the real pipeline.
-func importFixture(t *testing.T) string {
+func importFixture(t *testing.T, m manifest) string {
 	t.Helper()
 	fixture := fixtureDir()
 	if _, err := os.Stat(filepath.Join(fixture, "instagram")); err != nil {
@@ -593,6 +621,14 @@ func importFixture(t *testing.T) string {
 		t.Fatalf("creating temp repo: %v", err)
 	}
 	t.Cleanup(func() { tl.Close() })
+
+	// entity 1 must be the repository owner (the UI and the importers assume it); the setup
+	// wizard does this in the app, the fixture does it here
+	if owner := m.ownerEntity(); owner.Name != "" {
+		if err := tl.StoreEntity(ctx, owner); err != nil {
+			t.Fatalf("storing owner entity: %v", err)
+		}
+	}
 
 	constraints := map[string]bool{"filename": true, "timestamp": true, "latlon": true, "classification_name": true, "data": true}
 	// import roots: the two exports, plus the separate E2EE Messenger export when the fixture has one
@@ -649,7 +685,7 @@ func TestMeta(t *testing.T) {
 
 	dir := os.Getenv("TLZ_TEST_REPO")
 	if dir == "" {
-		dir = importFixture(t)
+		dir = importFixture(t, m)
 	} else {
 		t.Logf("checking existing repo %s", dir)
 	}

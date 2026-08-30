@@ -25,6 +25,7 @@ run the tests with the same value.
 | Dev server with the fixture | `scripts/dev-reset.sh` (wipes `repo-dev`, imports the fixture; Immich on, link fetching **off** unless `LF_ENABLED=true`) | ~1 min |
 | UI smoke tests | `tests/ui/specs/{items,conversations}.spec.js` | `cd tests/ui && TLZ_BASE_URL=http://127.0.0.1:12003 npx playwright test` (~3 min; `npx playwright show-report`) |
 | Item debug panel | `/items/<repo>/<id>?debug=1` (sticky per browser; `?debug=0` turns it off); API `item-debug --repo --item_id` | — |
+| Relationship graph | on every item page (`#item-graph`); API `item-graph --repo --item_id [--depth 2] [--max_nodes 150]` returns nodes (items, entities) and edges; the UI spec asserts it renders | — |
 
 The fixture is personal data and lives outside the repo (next to `ground-truth/`); the manifest in the repo only
 contains selectors (thread names, timestamps) and short expected snippets.

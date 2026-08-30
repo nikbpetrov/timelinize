@@ -110,6 +110,13 @@ func (app *App) registerCommands() {
 			ContentType: JSON,
 			Help:        "Returns everything the repository knows about one item (raw row, edges, owner, data file, Immich, link fetch, job) for troubleshooting (fork).",
 		},
+		"item-graph": {
+			Handler:     app.server.handleItemGraph,
+			Method:      methodQuery,
+			Payload:     itemGraphPayload{},
+			ContentType: JSON,
+			Help:        "Returns the relationship graph around an item: item and entity nodes with the edges between them, up to `depth` hops (fork).",
+		},
 		"immich-status": {
 			Handler:     app.server.handleImmichStatus,
 			Method:      methodQuery,

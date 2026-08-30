@@ -3042,6 +3042,16 @@
       "id": "group-messages-not-fanned-out",
       "sql": "select count(*) from relationships r join relations rel on rel.id=r.relation_id join items i on i.id=r.from_item_id where rel.label='sent' and r.to_attribute_id is not null and exists (select 1 from relationships x join relations xr on xr.id=x.relation_id where xr.label='in_collection' and x.from_item_id=i.id)",
       "expect": 0
+    },
+    {
+      "id": "entity-1-is-the-owner",
+      "sql": "select count(*) from entities where id = 1 and name = 'Nikolay Petrov'",
+      "expect": 1
+    },
+    {
+      "id": "owner-is-one-entity",
+      "sql": "select count(*) from entities where name = 'Nikolay Petrov'",
+      "expect": 1
     }
   ]
 }

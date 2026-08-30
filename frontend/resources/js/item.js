@@ -42,6 +42,7 @@ async function itemPageMain() {
 	if (debugOn) {
 		renderItemDebug(repoID, item.id).catch(err => console.error("item debug panel:", err));
 	}
+	renderItemGraph(repoID, item.id).catch(err => console.error("item graph:", err));
 
 	// download button
 	// server may need to create a synthetic file for download if it's not a data file already
@@ -193,8 +194,9 @@ async function itemPageMain() {
 	// TODO: see similar code in items.js -- make this standard somehow? (refactor)
 	if (item.related) {
 		for (let rel of item.related) {
-			if (rel.label == 'attachment' && rel.to_item) {
+			if ((rel.label == 'attachment' || rel.label == 'quotes' || rel.label == 'in_collection') && rel.to_item) {
 				const attachTpl = cloneTemplate('#tpl-attachment');
+				const labels = { attachment: 'Attached', quotes: 'Quotes / shares', in_collection: 'In collection' };
 
 				const attachmentElem = itemContentElement(rel.to_item, { thumbnail: true });
 				$('.card-img-bottom', attachTpl).appendChild(attachmentElem);
@@ -204,7 +206,7 @@ async function itemPageMain() {
 						<path stroke="none" d="M0 0h24v24H0z" fill="none"></path>
 						<path d="M15 7l-6.5 6.5a1.5 1.5 0 0 0 3 3l6.5 -6.5a3 3 0 0 0 -6 -6l-6.5 6.5a4.5 4.5 0 0 0 9 9l6.5 -6.5"></path>
 					</svg>
-					Attached`;
+					${labels[rel.label]}`;
 				
 				$('a.card-link', attachTpl).href = `/items/${repoID}/${rel.to_item.id}`;
 
@@ -426,4 +428,229 @@ async function renderItemDebug(repoID, itemID) {
 	section('link_fetch', 'link fetch cache entry', d.link_fetch, true);
 	section('thumbnail', 'thumbnail cache', d.thumbnail, false);
 	section('job', 'import job', d.job, false);
+}
+
+
+// ---- fork: relationship graph ------------------------------------------------------------
+
+const graphColors = {
+	message: '#206bc4', social: '#4299e1', media: '#2fb344', bookmark: '#f76707', collection: '#ae3ec9',
+	document: '#d63939', event: '#f59f00', location: '#0ca678', note: '#868e96', email: '#206bc4', page_view: '#868e96',
+	entity: '#ffb400', owner: '#e03131', place: '#0ca678',
+};
+
+function graphNodeColor(n) {
+	if (n.kind == 'entity') return n.owner ? graphColors.owner : (n.type == 'place' ? graphColors.place : graphColors.entity);
+	return graphColors[n.classification] || '#868e96';
+}
+
+function graphNodeLabel(n) {
+	if (n.kind == 'entity') return n.name || '(unnamed)';
+	let meta = null;
+	try { meta = n.metadata ? JSON.parse(n.metadata) : null; } catch {}
+	if (n.text) return n.text.length > 28 ? n.text.slice(0, 28) + '…' : n.text;
+	if (meta?.Kind == 'call') return `call (${meta.Direction || ''}${meta.Missed == true ? ', missed' : ''})`;
+	if (meta?.Kind == 'system') return `system: ${meta.Event || ''}`;
+	if (n.data_file) return n.data_file.split('/').pop();
+	return `${n.classification || 'item'} #${n.id}`;
+}
+
+function graphNodeSub(n) {
+	if (n.kind == 'entity') return n.owner ? 'you' : (n.type || 'entity');
+	const when = n.timestamp ? DateTime.fromMillis(n.timestamp).toLocaleString(DateTime.DATE_SHORT) : '';
+	return [n.classification, n.data_source, when].filter(Boolean).join(' · ');
+}
+
+// renderItemGraph draws the relationship graph around the item with a small force layout
+// (no library): items and entities as nodes, relationships as labelled edges. Nodes can be
+// dragged, clicked (opens the item/entity) and double-clicked (items: expand one more hop).
+async function renderItemGraph(repoID, itemID) {
+	const svg = $('#item-graph-svg');
+	const NS = 'http://www.w3.org/2000/svg';
+	const nodes = new Map(); // key -> node (+ x, y, vx, vy)
+	const edges = new Map(); // id/key -> edge
+	let seedKey = `item:${itemID}`;
+	const W = () => svg.clientWidth || 800, H = () => svg.clientHeight || 420;
+
+	function merge(g) {
+		for (const n of g.nodes) {
+			if (!nodes.has(n.key)) {
+				// start new nodes near their first neighbour (or the centre)
+				const anchor = [...nodes.values()].find(m => g.edges.some(e => (e.from == n.key && e.to == m.key) || (e.to == n.key && e.from == m.key)));
+				nodes.set(n.key, {...n, x: (anchor?.x ?? W()/2) + (Math.random()-0.5)*80, y: (anchor?.y ?? H()/2) + (Math.random()-0.5)*80, vx: 0, vy: 0, expanded: false});
+			}
+		}
+		for (const e of g.edges) {
+			const k = e.id ? `r${e.id}` : `${e.from}|${e.to}|${e.label}`;
+			if (!edges.has(k)) edges.set(k, e);
+		}
+		if (g.truncated) $('#item-graph-stats').title = 'graph truncated (node limit)';
+	}
+
+	const g = await app.ItemGraph({ repo: repoID, item_id: Number(itemID), depth: 2 });
+	merge(g);
+	const seed = nodes.get(seedKey);
+	if (seed) { seed.x = W()/2; seed.y = H()/2; seed.expanded = true; }
+
+	// ---- layout: springs along edges, repulsion between all nodes, gravity to the centre
+	function step(alpha) {
+		const arr = [...nodes.values()];
+		for (let i = 0; i < arr.length; i++) {
+			for (let j = i+1; j < arr.length; j++) {
+				const a = arr[i], b = arr[j];
+				let dx = b.x - a.x, dy = b.y - a.y;
+				let d2 = dx*dx + dy*dy || 1;
+				const f = 4000 / d2;
+				const d = Math.sqrt(d2);
+				dx /= d; dy /= d;
+				a.vx -= dx*f*alpha; a.vy -= dy*f*alpha;
+				b.vx += dx*f*alpha; b.vy += dy*f*alpha;
+			}
+		}
+		for (const e of edges.values()) {
+			const a = nodes.get(e.from), b = nodes.get(e.to);
+			if (!a || !b) continue;
+			const dx = b.x - a.x, dy = b.y - a.y;
+			const d = Math.sqrt(dx*dx + dy*dy) || 1;
+			const want = e.label == 'owner' ? 95 : 150;
+			const f = (d - want) * 0.02 * alpha;
+			a.vx += dx/d*f; a.vy += dy/d*f;
+			b.vx -= dx/d*f; b.vy -= dy/d*f;
+		}
+		for (const n of arr) {
+			n.vx += (W()/2 - n.x) * 0.002 * alpha;
+			n.vy += (H()/2 - n.y) * 0.002 * alpha;
+			if (n.fixed) { n.vx = n.vy = 0; continue; }
+			n.vx *= 0.85; n.vy *= 0.85;
+			n.x = Math.max(20, Math.min(W()-20, n.x + n.vx));
+			n.y = Math.max(20, Math.min(H()-20, n.y + n.vy));
+		}
+	}
+
+	// ---- drawing
+	const layerEdges = document.createElementNS(NS, 'g');
+	const layerLabels = document.createElementNS(NS, 'g');
+	const layerNodes = document.createElementNS(NS, 'g');
+	svg.replaceChildren(layerEdges, layerLabels, layerNodes);
+	const defs = document.createElementNS(NS, 'defs');
+	defs.innerHTML = `<marker id="graph-arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#999"/></marker>`;
+	svg.prepend(defs);
+	const els = new Map();
+
+	function ensureElements() {
+		for (const [k, e] of edges) {
+			if (els.has('e'+k)) continue;
+			const line = document.createElementNS(NS, 'line');
+			line.classList.add('edge', e.label);
+			if (e.directed && e.label != 'owner') line.setAttribute('marker-end', 'url(#graph-arrow)');
+			layerEdges.append(line);
+			const label = document.createElementNS(NS, 'text');
+			label.classList.add('edge-label');
+			label.setAttribute('text-anchor', 'middle');
+			label.textContent = e.label + (e.value != null && e.value !== '' ? ` ${e.value}` : '');
+			layerLabels.append(label);
+			els.set('e'+k, {line, label});
+		}
+		for (const [k, n] of nodes) {
+			if (els.has('n'+k)) continue;
+			const gEl = document.createElementNS(NS, 'g');
+			gEl.classList.add('node', n.kind);
+			if (k == seedKey) gEl.classList.add('seed');
+			const r = n.kind == 'entity' ? 14 : (k == seedKey ? 16 : 11);
+			const circle = document.createElementNS(NS, 'circle');
+			circle.setAttribute('r', r);
+			circle.setAttribute('fill', graphNodeColor(n));
+			gEl.append(circle);
+			if (n.kind == 'entity') {
+				const initials = document.createElementNS(NS, 'text');
+				initials.setAttribute('text-anchor', 'middle'); initials.setAttribute('dy', '4');
+				initials.setAttribute('fill', '#fff'); initials.style.fontSize = '10px'; initials.style.fontWeight = '600';
+				initials.textContent = (n.name || '?').split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase();
+				gEl.append(initials);
+			}
+			const label = document.createElementNS(NS, 'text');
+			label.setAttribute('text-anchor', 'middle'); label.setAttribute('dy', r + 13);
+			label.textContent = graphNodeLabel(n);
+			gEl.append(label);
+			const sub = document.createElementNS(NS, 'text');
+			sub.classList.add('node-sub');
+			sub.setAttribute('text-anchor', 'middle'); sub.setAttribute('dy', r + 24);
+			sub.textContent = graphNodeSub(n);
+			gEl.append(sub);
+			const title = document.createElementNS(NS, 'title');
+			title.textContent = n.kind == 'entity' ? `${n.name} (${n.type}) #${n.id}` : `${n.classification} #${n.id}\n${n.text || n.data_file || ''}`;
+			gEl.append(title);
+
+			// interactions
+			let dragged = false, startX, startY;
+			gEl.addEventListener('pointerdown', ev => {
+				ev.preventDefault(); dragged = false; startX = ev.clientX; startY = ev.clientY;
+				n.fixed = true; gEl.setPointerCapture(ev.pointerId);
+			});
+			gEl.addEventListener('pointermove', ev => {
+				if (!n.fixed) return;
+				if (Math.abs(ev.clientX - startX) + Math.abs(ev.clientY - startY) > 3) dragged = true;
+				const pt = svgPoint(ev); n.x = pt.x; n.y = pt.y; alpha = Math.max(alpha, 0.3);
+			});
+			gEl.addEventListener('pointerup', ev => {
+				n.fixed = false; gEl.releasePointerCapture(ev.pointerId);
+				if (dragged) return;
+				if (ev.detail >= 2) return; // dblclick handles it
+				clickTimer = setTimeout(() => {
+					location.href = n.kind == 'entity' ? `/entities/${repoID}/${n.id}` : `/items/${repoID}/${n.id}`;
+				}, 250);
+			});
+			gEl.addEventListener('dblclick', async ev => {
+				clearTimeout(clickTimer);
+				if (n.kind != 'item' || n.expanded) return;
+				n.expanded = true;
+				const more = await app.ItemGraph({ repo: repoID, item_id: n.id, depth: 1 });
+				merge(more); ensureElements(); alpha = 1; updateStats();
+			});
+			layerNodes.append(gEl);
+			els.set('n'+k, gEl);
+		}
+	}
+	let clickTimer;
+	function svgPoint(ev) {
+		const rect = svg.getBoundingClientRect();
+		return { x: ev.clientX - rect.left, y: ev.clientY - rect.top };
+	}
+
+	function draw() {
+		for (const [k, e] of edges) {
+			const el = els.get('e'+k); const a = nodes.get(e.from), b = nodes.get(e.to);
+			if (!el || !a || !b) continue;
+			// shorten the line so the arrow head ends at the target circle
+			const dx = b.x - a.x, dy = b.y - a.y, d = Math.sqrt(dx*dx+dy*dy) || 1;
+			const rb = b.kind == 'entity' ? 14 : 11, ra = a.kind == 'entity' ? 14 : 11;
+			el.line.setAttribute('x1', a.x + dx/d*ra); el.line.setAttribute('y1', a.y + dy/d*ra);
+			el.line.setAttribute('x2', b.x - dx/d*rb); el.line.setAttribute('y2', b.y - dy/d*rb);
+			el.label.setAttribute('x', (a.x+b.x)/2); el.label.setAttribute('y', (a.y+b.y)/2 - 3);
+		}
+		for (const [k, n] of nodes) {
+			els.get('n'+k)?.setAttribute('transform', `translate(${n.x},${n.y})`);
+		}
+	}
+	function updateStats() {
+		$('#item-graph-stats').textContent = `${nodes.size} nodes · ${edges.size} edges`;
+		const kinds = new Map();
+		for (const n of nodes.values()) {
+			const k = n.kind == 'entity' ? (n.owner ? 'you' : n.type || 'entity') : n.classification;
+			kinds.set(k, graphNodeColor(n));
+		}
+		$('#item-graph-legend').innerHTML = [...kinds].map(([k, c]) => `<span class="legend-dot" style="background:${c}"></span>${k}`).join('');
+	}
+
+	ensureElements(); updateStats();
+	let alpha = 1;
+	// settle the layout before the first paint, then animate the rest
+	for (let i = 0; i < 120; i++) step(1);
+	function frame() {
+		if (!svg.isConnected) return;
+		if (alpha > 0.01) { step(alpha); alpha *= 0.97; draw(); }
+		requestAnimationFrame(frame);
+	}
+	draw();
+	requestAnimationFrame(frame);
 }

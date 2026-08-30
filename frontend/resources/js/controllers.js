@@ -225,6 +225,7 @@ tlz.pageControllers = {
 			newEntitySelect($('.entity-input'), 5, true);
 		},
 		async render() {
+			await prefillEntitySelect('.entity-input');
 			await itemsMain();
 		}
 	},
@@ -246,6 +247,7 @@ tlz.pageControllers = {
 			newEntitySelect($('#select-person'), 1, true);
 		},
 		async render() {
+			await prefillEntitySelect('#select-person');
 			await loadAndRenderMapData();
 		},
 		unload() {

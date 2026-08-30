@@ -2002,6 +2002,25 @@ function renderMessageItem(item, options) {
 					videoTag.setAttribute('controls', '');
 					$('.attachments', elem).appendChild(videoTag);
 				}
+			} else if (rel.label == 'quotes' && rel.to_item) {
+				// a share of the owner's own story/post (fork): show the quoted item as an attachment
+				$('.attachments', elem).classList.remove('d-none');
+				const quoted = document.createElement('a');
+				quoted.href = `/items/${item.repo_id}/${rel.to_item.id}`;
+				quoted.className = 'd-inline-block m-1 text-decoration-none';
+				quoted.title = 'shared this';
+				if (rel.to_item.data_type?.startsWith('image/')) {
+					quoted.innerHTML = `<span class="avatar avatar-xl" style="background-image:url('${itemImgSrc(rel.to_item, true)}')"></span>`;
+				} else if (rel.to_item.data_type?.startsWith('video/')) {
+					quoted.innerHTML = `<video src="/repo/${item.repo_id}/${rel.to_item.data_file}" type="${rel.to_item.data_type}" controls></video>`;
+				} else {
+					quoted.textContent = rel.to_item.data_text ? maxlenStr(rel.to_item.data_text, 120) : `${rel.to_item.classification} #${rel.to_item.id}`;
+				}
+				const cap = document.createElement('div');
+				cap.className = 'small text-secondary';
+				cap.textContent = 'shared your story';
+				quoted.append(cap);
+				$('.attachments', elem).appendChild(quoted);
 			} else if (rel.label == 'reacted' && rel.from_entity) {
 				if (reactions[rel.value] === undefined) {
 					reactions[rel.value] = [];
@@ -2353,6 +2372,21 @@ function itemPreviews(items) {
 ////////////////////////////////////////////////////
 // Entity select dropdown
 ////////////////////////////////////////////////////
+
+// prefillEntitySelect adds the entities named in the ?entity= query parameter (comma-separated
+// ids) to an entity filter select, e.g. when arriving from an entity page's Items/Map tab (fork).
+async function prefillEntitySelect(element) {
+	const qs = queryParam("entity");
+	const select = (typeof element == 'string' ? $(element) : element)?.tomselect;
+	if (!qs || !select) return false;
+	const ids = qs.split(',').map(Number).filter(Boolean);
+	const entities = await app.SearchEntities({ repo: tlz.openRepos[0].instance_id, row_id: ids });
+	for (const ent of entities) {
+		select.addOption(ent);
+		select.addItem(ent.id, true);
+	}
+	return entities.length > 0;
+}
 
 function newEntitySelect(element, maxItems, noWrap) {
 	if ($(element).tomselect) {

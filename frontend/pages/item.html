@@ -60,6 +60,17 @@
 
 				</div>
 
+				<div id="item-graph" class="card mb-4">
+					<div class="card-header py-2 d-flex align-items-center">
+						<span class="card-title">Relationships</span>
+						<span class="text-secondary small ms-2">click a node to open it, double-click an item to expand it, drag to arrange</span>
+						<span class="ms-auto small text-secondary" id="item-graph-stats"></span>
+					</div>
+					<div class="card-body p-0">
+						<svg id="item-graph-svg" width="100%" height="420" role="img" aria-label="relationship graph"></svg>
+					</div>
+					<div class="card-footer py-1 small text-secondary" id="item-graph-legend"></div>
+				</div>
 				<div id="item-debug" class="card mb-4 d-none">
 					<div class="card-header py-2"><span class="card-title">Debug</span> <span class="text-secondary small ms-2">everything the repository knows about this item (<a href="?debug=0">turn off</a>)</span></div>
 					<div id="item-debug-body" class="card-body py-2"></div>

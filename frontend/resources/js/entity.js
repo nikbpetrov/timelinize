@@ -38,6 +38,9 @@ async function entityPageMain() {
 	const ent = entities[0];
 	
 	$('#entity-id').innerText = ent.id;
+	// fork: the Items / Map tabs open the respective pages filtered by this entity
+	$('#entity-items-link').href = `/items?entity=${ent.id}`;
+	$('#entity-map-link').href = `/map?entity=${ent.id}`;
 	$('#entity-type').innerHTML = entityTypes[ent.type];
 	$('#picture').innerHTML = avatar(true, ent, 'avatar-xxl');
 	$('#name').innerText = ent.name || "Unknown";

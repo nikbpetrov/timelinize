@@ -17,6 +17,19 @@
 	padding: 15px 25px;
 }
 
+/* fork: relationship graph */
+#item-graph-svg { display: block; background: var(--tblr-bg-surface-secondary); cursor: grab; }
+#item-graph-svg .edge { stroke: var(--tblr-border-color-active, #999); stroke-width: 1.5; fill: none; }
+#item-graph-svg .edge.owner { stroke-dasharray: 3 3; }
+#item-graph-svg .edge-label { font-size: 10px; fill: var(--tblr-secondary); pointer-events: none; paint-order: stroke; stroke: var(--tblr-bg-surface-secondary); stroke-width: 3px; }
+#item-graph-svg .node { cursor: pointer; }
+#item-graph-svg .node circle { stroke: #fff; stroke-width: 1.5; }
+#item-graph-svg .node.seed circle { stroke: var(--tblr-primary); stroke-width: 3; }
+#item-graph-svg .node text { font-size: 11px; fill: var(--tblr-body-color); pointer-events: none; paint-order: stroke; stroke: var(--tblr-bg-surface-secondary); stroke-width: 3px; }
+#item-graph-svg .node.entity text:first-of-type { stroke: none; }
+#item-graph-svg .node .node-sub { font-size: 9px; fill: var(--tblr-secondary); }
+#item-graph-legend .legend-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin: 0 4px 0 10px; vertical-align: middle; }
+
 #item-owner-name {
 	font-size: 16px;
 }

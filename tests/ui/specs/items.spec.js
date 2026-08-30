@@ -28,6 +28,9 @@ for (const c of manifest.cases) {
 				const panel = page.locator('#item-debug');
 				await expect(panel).toBeVisible({ timeout: 10_000 });
 				await expect(panel.locator('[data-section="item"] pre')).toContainText(`"id": ${it.id}`);
+				// the relationship graph (fork) must draw at least the item itself and its owner
+				await expect(page.locator('#item-graph-svg .node.seed')).toBeVisible({ timeout: 10_000 });
+				expect(await page.locator('#item-graph-svg .node').count()).toBeGreaterThan(1);
 				visited++;
 			}
 		}

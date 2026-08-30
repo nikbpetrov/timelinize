@@ -538,6 +538,23 @@ type itemDebugPayload struct {
 	ItemID int64  `json:"item_id"`
 }
 
+type itemGraphPayload struct {
+	Repo     string `json:"repo"`
+	ItemID   int64  `json:"item_id"`
+	Depth    int    `json:"depth,omitempty"`
+	MaxNodes int    `json:"max_nodes,omitempty"`
+}
+
+func (s *server) handleItemGraph(w http.ResponseWriter, r *http.Request) error {
+	payload := r.Context().Value(ctxKeyPayload).(*itemGraphPayload)
+	tl, err := getOpenTimeline(payload.Repo)
+	if err != nil {
+		return err
+	}
+	g, err := tl.ItemGraph(r.Context(), payload.ItemID, payload.Depth, payload.MaxNodes)
+	return jsonResponse(w, g, err)
+}
+
 func (s *server) handleItemDebug(w http.ResponseWriter, r *http.Request) error {
 	payload := r.Context().Value(ctxKeyPayload).(*itemDebugPayload)
 	d, err := s.app.ItemDebug(r.Context(), payload.Repo, payload.ItemID)
