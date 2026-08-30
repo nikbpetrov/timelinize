@@ -126,16 +126,16 @@ def expected_facebook(export, a):
             for att in g.get('data', []):
                 if 'media' in att: social += 1
                 elif 'external_context' in att and att['external_context'].get('url'):
-                    # ID-less items with identical timestamp+text merge under the unique constraints
-                    link_keys.add((post.get('timestamp'), (att['external_context'].get('name') or '').strip()))
+                    link_keys.add(canonical(att['external_context']['url']))  # bookmarks are keyed by canonical URL
                 elif 'text' in att and att['text'].strip(): social += 1
-    location += len(link_keys)
+    bookmarks_from_posts = len(link_keys)
     # tagged places and check-ins are imported as location items regardless of the post filter
     tagged = os.path.join(export, 'your_facebook_activity/posts/places_you_have_been_tagged_in.json')
     if os.path.exists(tagged): location += len(load_json(tagged))
     checkins = os.path.join(export, 'your_facebook_activity/posts/check-ins.json')
     if os.path.exists(checkins):
         ci = load_json(checkins); location += len(ci if isinstance(ci, list) else next(iter(ci.values()), []))
+    msgs['bookmark_urls'] |= link_keys
     return {'social': social, 'location_from_posts': location, 'posts': len(posts), **msgs}
 
 def actual(db, source):
@@ -185,7 +185,7 @@ def main():
         media_expected = exp['stories'] + exp['quotes'] + act['fetched_media']  # quoted stories outside the story filter add media items
         check('media (stories + quoted + fetched)', media_expected, by.get('media', 0))
     else:
-        check('locations (post links + tagged places)', exp['location_from_posts'], by.get('location', 0))
+        check('locations (tagged places + check-ins)', exp['location_from_posts'], by.get('location', 0))
     check('mojibake entities', 0, act['mojibake_entities'])
     print('  bookmarks by status: %s; fetched media items: %d; placeholders dropped: %d' % (act['bookmarks'], act['fetched_media'], exp['placeholders']))
     files, in_immich, evicted = act['immich']

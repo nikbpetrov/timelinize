@@ -1130,3 +1130,12 @@ func (app App) ImmichStatus(repoID string) (timeline.ImmichStatus, error) {
 	}
 	return tl.ImmichStatus(app.ctx)
 }
+
+// ItemDebug returns troubleshooting information about one item (fork).
+func (App) ItemDebug(ctx context.Context, repoID string, itemID int64) (*timeline.ItemDebug, error) {
+	tl, err := getOpenTimeline(repoID)
+	if err != nil {
+		return nil, err
+	}
+	return tl.DebugItem(ctx, itemID)
+}

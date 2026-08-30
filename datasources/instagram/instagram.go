@@ -288,7 +288,7 @@ func (c *Client) getStoryIndex(fsys fs.FS, logger *zap.Logger) (instaStories, er
 
 // storyItem builds the item for one of the owner's stories.
 func storyItem(dirEntry timeline.DirEntry, owner timeline.Entity, story instaStory) *timeline.Item {
-	return &timeline.Item{
+	it := &timeline.Item{
 		Timestamp:            time.Unix(story.CreationTimestamp, 0).UTC(),
 		Owner:                owner,
 		IntermediateLocation: story.URI,
@@ -302,6 +302,10 @@ func storyItem(dirEntry timeline.DirEntry, owner timeline.Entity, story instaSto
 			"Caption": facebook.FixString(story.Title),
 		},
 	}
+	// The same story may be emitted twice in one import (by the stories loop and by a DM that
+	// links to it); batches are processed concurrently, so key it for the pipeline to fuse them.
+	it.Retrieval.SetKey("instagram::story::" + story.URI)
+	return it
 }
 
 // ownStoryMatchTolerance is how far the time decoded from a story's media ID may be

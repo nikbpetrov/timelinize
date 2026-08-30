@@ -30,6 +30,7 @@ import (
 	"io/fs"
 	"maps"
 	"os"
+	"os/exec"
 	"path"
 	"strings"
 	"sync"
@@ -412,6 +413,17 @@ func (p *processor) downloadDataFile(it *Item, source io.Reader, destination *os
 		it.dataFileSize = dataFileSize
 		it.dataFileHash = h.Sum(nil)
 
+		// voice notes from messengers are audio-only MP4/MOV containers that byte-sniffing
+		// reports as video; probe the streams so they are typed as audio (no video thumbnail
+		// attempts, not uploaded to Immich, rendered with an audio player)
+		if it.Content.MediaType == "video/mp4" || it.Content.MediaType == "video/quicktime" {
+			if audioOnlyContainer(destination.Name()) {
+				p.log.Debug("audio-only container; typing as audio",
+					zap.String("data_file", it.dataFilePath), zap.String("sniffed", it.Content.MediaType))
+				it.Content.MediaType = "audio/mp4"
+			}
+		}
+
 		// If inline thumbnail generation is enabled, do that now; this acquires a lock or two on the DB,
 		// so it's definitely not super efficient, but: this is an opt-in code path, and the bottleneck
 		// here is usually the thumbnail generation itself, not the DB. I have not noticed a huge difference
@@ -668,7 +680,7 @@ func (p *processor) processGraph(ctx context.Context, tx *sql.Tx, g *Graph) erro
 				return zap.Stringp("entity", nil)
 			}
 			item, entity := g.Item, g.Entity
-			if options, obfuscate := p.tl.obfuscationMode(); obfuscate {
+			if options, obfuscate := p.tl.obfuscation(); obfuscate {
 				// We tediously (shallow-ish) copy the values that are anonymized,
 				// since we have to log them with obfuscation mode enabled. Why
 				// do we need to copy them first? Because the tx isn't finished
@@ -1079,4 +1091,25 @@ func (p *processor) renameDataFile(ctx context.Context, tx *sql.Tx, incoming *It
 	}
 
 	return newDataFilePath, nil
+}
+
+// audioOnlyContainer reports whether the media file has audio streams but no video stream,
+// using ffprobe (false if ffprobe is unavailable or the probe fails).
+func audioOnlyContainer(path string) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "ffprobe", "-v", "error", "-show_entries", "stream=codec_type", "-of", "csv=p=0", path).Output()
+	if err != nil {
+		return false
+	}
+	hasAudio, hasVideo := false, false
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		switch strings.TrimSpace(line) {
+		case "audio":
+			hasAudio = true
+		case "video":
+			hasVideo = true
+		}
+	}
+	return hasAudio && !hasVideo
 }

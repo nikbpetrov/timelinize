@@ -1,0 +1,2371 @@
+{
+  "version": 1,
+  "_doc": "Test cases for the Meta (Instagram/Facebook) importers. Each case selects a few real records from the ground-truth exports (scripts/build-testing-data.py copies them into a mini export) and states how they must be represented after import (tests/meta). Selectors: messages = thread path relative to the messages folder + timestamp_ms list; posts = index into the concatenated posts files; stories = file basename. Expectation vocabulary: see tests/meta/README.md.",
+  "sources": {
+    "instagram": {
+      "export": "ig",
+      "owner": "Nikolay Petrov",
+      "username": "nik.b.petrov"
+    },
+    "facebook": {
+      "export": "fb/data",
+      "owner": "Nikolay Petrov",
+      "username": "nikbpetrov"
+    }
+  },
+  "cases": [
+    {
+      "id": "ig-post-carousel-caption",
+      "source": "instagram",
+      "entity": "post",
+      "subtype": "carousel with caption (7 jpg)",
+      "why": "Post text is the root social item; every media is an attached social item.",
+      "select": {
+        "posts": [
+          0
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1641235355000,
+              "classification": "social",
+              "has_text": true
+            },
+            "count": 1,
+            "data_text_contains": "Starting 2022",
+            "owner": "nik.b.petrov",
+            "edges_out_count": {
+              "attachment": 7
+            }
+          },
+          {
+            "where": {
+              "ts": 1641235355000,
+              "classification": "social",
+              "has_file": true
+            },
+            "count": 7,
+            "data_type_prefix": "image/"
+          }
+        ]
+      }
+    },
+    {
+      "id": "ig-post-single-title-on-media",
+      "source": "instagram",
+      "entity": "post",
+      "subtype": "single image, caption stored on the media entry not the post",
+      "why": "Instagram puts the caption in media[0].title for single-media posts; must still become the post text.",
+      "select": {
+        "posts": [
+          3
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1634329273000,
+              "classification": "social",
+              "has_text": true
+            },
+            "count": 1,
+            "data_text_contains": "still feels like a dream",
+            "edges_out_count": {
+              "attachment": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "ig-post-single-video",
+      "source": "instagram",
+      "entity": "post",
+      "subtype": "single video with caption",
+      "select": {
+        "posts": [
+          11
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1622995271000,
+              "classification": "social",
+              "has_file": true
+            },
+            "count": 1,
+            "data_type_prefix": "video/"
+          }
+        ]
+      }
+    },
+    {
+      "id": "ig-post-mixed-carousel",
+      "source": "instagram",
+      "entity": "post",
+      "subtype": "carousel mixing jpg and mp4",
+      "select": {
+        "posts": [
+          17
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1613501041000,
+              "classification": "social",
+              "has_text": true
+            },
+            "count": 1,
+            "edges_out_count": {
+              "attachment": 4
+            }
+          },
+          {
+            "where": {
+              "classification": "social",
+              "data_file": "17874645287230420.mp4"
+            },
+            "count": 1,
+            "_note": "video slide has the media's own creation_timestamp"
+          }
+        ]
+      }
+    },
+    {
+      "id": "ig-story-image-caption",
+      "source": "instagram",
+      "entity": "story",
+      "subtype": "jpg with caption",
+      "select": {
+        "stories": [
+          "18037091606206114.jpg"
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1731455863000,
+              "classification": "media"
+            },
+            "count": 1,
+            "data_file": ".jpg",
+            "metadata": {
+              "Caption": "21C Can't find the temp thingy ffs"
+            },
+            "owner": "nik.b.petrov"
+          }
+        ]
+      }
+    },
+    {
+      "id": "ig-story-video-nocaption",
+      "source": "instagram",
+      "entity": "story",
+      "subtype": "mp4 without caption",
+      "select": {
+        "stories": [
+          "18071323396892038.mp4"
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1755748701000,
+              "classification": "media"
+            },
+            "count": 1,
+            "data_type_prefix": "video/"
+          }
+        ]
+      }
+    },
+    {
+      "id": "ig-story-webp",
+      "source": "instagram",
+      "entity": "story",
+      "subtype": "webp image (2025 exports)",
+      "select": {
+        "stories": [
+          "18094583893561657.webp"
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1755744573000,
+              "classification": "media"
+            },
+            "count": 1,
+            "data_type_prefix": "image/"
+          }
+        ]
+      }
+    },
+    {
+      "id": "ig-story-quoted-from-dm",
+      "source": "instagram",
+      "entity": "story",
+      "subtype": "own story that a DM links to (offline match by media-ID timestamp)",
+      "why": "A DM sharing your own story must point at the imported story item (quotes edge), not create a dead bookmark.",
+      "select": {
+        "stories": [
+          "18101454757367375.jpg"
+        ],
+        "messages": [
+          {
+            "thread": "inbox/alekskrsteva_1215475343187086",
+            "ts": [
+              1702398832151
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1702398832151,
+              "classification": "message"
+            },
+            "count": 1,
+            "data_text": null,
+            "owner": "Nikolay Petrov",
+            "edges_out": [
+              {
+                "label": "quotes",
+                "to_item": {
+                  "classification": "media",
+                  "data_file_contains": "18101454757367375"
+                }
+              },
+              {
+                "label": "sent",
+                "to_entity": "Алекс Кръстева"
+              }
+            ]
+          },
+          {
+            "where": {
+              "classification": "media",
+              "data_file_contains": "18101454757367375"
+            },
+            "count": 1,
+            "_note": "exactly one story item even though the stories loop and the DM both emit it"
+          },
+          {
+            "where": {
+              "classification": "bookmark",
+              "data_text_contains": "/stories/nik.b.petrov/"
+            },
+            "count": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "ig-story-quoted-with-text",
+      "source": "instagram",
+      "entity": "story",
+      "subtype": "own story link accompanied by typed text (reply to your story)",
+      "select": {
+        "stories": [
+          "17901439082516904.mp4"
+        ],
+        "messages": [
+          {
+            "thread": "inbox/aleksandrinanedyalkova_1077456406125679",
+            "ts": [
+              1643502630417
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1643502630417,
+              "classification": "message"
+            },
+            "count": 1,
+            "data_text": "Завиждам благородно",
+            "owner": "Aleksandrina Nedyalkova",
+            "edges_out": [
+              {
+                "label": "quotes",
+                "to_item": {
+                  "data_file_contains": "17901439082516904"
+                }
+              }
+            ]
+          },
+          {
+            "where": {
+              "classification": "media",
+              "data_file_contains": "17901439082516904"
+            },
+            "count": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "ig-msg-text-cyrillic",
+      "source": "instagram",
+      "entity": "message",
+      "subtype": "plain text, double-encoded UTF-8 (mojibake in the raw JSON)",
+      "select": {
+        "messages": [
+          {
+            "thread": "inbox/stanislavrangelov_1329792411755940",
+            "ts": [
+              1706981749826
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1706981749826
+            },
+            "count": 1,
+            "classification": "message",
+            "data_text": "Баш, баш",
+            "owner": "Станислав Рангелов",
+            "edges_out": [
+              {
+                "label": "sent",
+                "to_entity": "Nikolay Petrov"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "ig-msg-text-with-reaction",
+      "source": "instagram",
+      "entity": "message",
+      "subtype": "text with reactions[] array",
+      "select": {
+        "messages": [
+          {
+            "thread": "inbox/evgenianikolova_1117740222948253",
+            "ts": [
+              1697231416658
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1697231416658
+            },
+            "count": 1,
+            "data_text_contains": "Истинският воин",
+            "edges_in": [
+              {
+                "label": "reacted",
+                "from_entity": "Evgenia Nikolova",
+                "value": "❤️"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "ig-msg-pseudo-reaction",
+      "source": "instagram",
+      "entity": "message",
+      "subtype": "reaction written as a standalone 'Reacted X to your message' message",
+      "why": "Instagram stores the counterpart's reaction to your message twice: reactions[] on your message and a prose pseudo-message from them. Currently imported as a real message (1,031 in the full export).",
+      "known_issue": "pseudo-message duplicates the reacted edge; should be dropped (optionally keeping its timestamp on the edge)",
+      "select": {
+        "messages": [
+          {
+            "thread": "inbox/stanislavrangelov_1329792411755940",
+            "ts": [
+              1706981744029,
+              1706979479352
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1706981744029
+            },
+            "count": 1,
+            "classification": "message",
+            "data_text": "Reacted 😂 to your message",
+            "owner": "Станислав Рангелов"
+          },
+          {
+            "where": {
+              "ts": 1706979479352,
+              "classification": "message"
+            },
+            "count": 1,
+            "data_text": null,
+            "owner": "Nikolay Petrov",
+            "edges_in": [
+              {
+                "label": "reacted",
+                "from_entity": "Станислав Рангелов",
+                "value": "😂"
+              }
+            ],
+            "edges_out": [
+              {
+                "label": "attachment",
+                "to_item": {
+                  "classification": "bookmark",
+                  "data_text": "https://instagram.com/reel/C1LHowONl_N"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "ig-msg-pseudo-like",
+      "source": "instagram",
+      "entity": "message",
+      "subtype": "'Liked a message' pseudo-message (heart reaction)",
+      "known_issue": "same duplication as ig-msg-pseudo-reaction",
+      "select": {
+        "messages": [
+          {
+            "thread": "inbox/evgenianikolova_1117740222948253",
+            "ts": [
+              1761504616244
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1761504616244
+            },
+            "count": 1,
+            "classification": "message",
+            "data_text": "Liked a message"
+          }
+        ]
+      }
+    },
+    {
+      "id": "ig-msg-photos-multi",
+      "source": "instagram",
+      "entity": "message",
+      "subtype": "6 photos in one message, no text, own reaction on it",
+      "why": "Attachment-only message: first photo becomes the root message, the other 5 are attached; the file must be read from the archive.",
+      "select": {
+        "messages": [
+          {
+            "thread": "inbox/evgenianikolova_1117740222948253",
+            "ts": [
+              1761504629935
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "classification": "message",
+              "data_file": "3707564116045928.jpg"
+            },
+            "count": 1,
+            "data_type_prefix": "image/",
+            "edges_out_count": {
+              "attachment": 5
+            },
+            "edges_in": [
+              {
+                "label": "reacted",
+                "from_entity": "Nikolay Petrov"
+              }
+            ],
+            "_note": "attachment timestamps are the media creation_timestamp (second precision), not the message timestamp_ms"
+          }
+        ]
+      }
+    },
+    {
+      "id": "ig-msg-photo-single",
+      "source": "instagram",
+      "entity": "message",
+      "subtype": "single photo attachment",
+      "select": {
+        "messages": [
+          {
+            "thread": "inbox/rhys_613578166303284",
+            "ts": [
+              1632440313732
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "classification": "message",
+              "data_file": "287762526189714.jpg"
+            },
+            "count": 1,
+            "data_type_prefix": "image/",
+            "owner": "Rhys"
+          }
+        ]
+      }
+    },
+    {
+      "id": "ig-msg-video",
+      "source": "instagram",
+      "entity": "message",
+      "subtype": "video attachment",
+      "select": {
+        "messages": [
+          {
+            "thread": "inbox/orestiszavlis_475634757168061",
+            "ts": [
+              1763845716390
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "classification": "message",
+              "data_file": "1845507906101711.mp4"
+            },
+            "count": 1,
+            "data_type_prefix": "video/"
+          }
+        ]
+      }
+    },
+    {
+      "id": "ig-msg-audio",
+      "source": "instagram",
+      "entity": "message",
+      "subtype": "voice messages (.aac and audio-in-.mp4)",
+      "select": {
+        "messages": [
+          {
+            "thread": "inbox/yoannapetrova_1071712600890493",
+            "ts": [
+              1713000119466,
+              1696025109297
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "classification": "message",
+              "data_file": ".aac"
+            },
+            "count": 1,
+            "data_type_prefix": "audio/"
+          },
+          {
+            "where": {
+              "classification": "message",
+              "data_file": "868967024615674.mp4"
+            },
+            "count": 1,
+            "data_type_prefix": "audio/"
+          }
+        ]
+      },
+      "why": "Voice notes are audio-only MP4 containers; byte sniffing says video/mp4, the fork probes the streams and types them audio/mp4 (no video thumbnail attempts, not sent to Immich)."
+    },
+    {
+      "id": "ig-msg-share-reel",
+      "source": "instagram",
+      "entity": "message",
+      "subtype": "shared reel with 'You sent an attachment.' placeholder",
+      "why": "Placeholder dropped; bookmark keyed by canonical URL carries Kind/Author/Caption; message is an empty root owned by the sender.",
+      "select": {
+        "messages": [
+          {
+            "thread": "inbox/evgenianikolova_1117740222948253",
+            "ts": [
+              1762261391810
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1762261391810,
+              "classification": "message"
+            },
+            "count": 1,
+            "data_text": null,
+            "owner": "Nikolay Petrov",
+            "edges_out": [
+              {
+                "label": "attachment",
+                "to_item": {
+                  "classification": "bookmark",
+                  "data_text_contains": "instagram.com/reel/"
+                }
+              }
+            ],
+            "edges_in": [
+              {
+                "label": "reacted",
+                "from_entity": "Evgenia Nikolova",
+                "value": "😂"
+              }
+            ]
+          },
+          {
+            "where": {
+              "ts": 1762261391810,
+              "classification": "bookmark"
+            },
+            "count": 1,
+            "metadata": {
+              "Kind": "reel",
+              "Author": "daily.dance.memes"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "ig-msg-share-post",
+      "source": "instagram",
+      "entity": "message",
+      "subtype": "shared /p/ post (photo or carousel)",
+      "select": {
+        "messages": [
+          {
+            "thread": "inbox/evgenianikolova_1117740222948253",
+            "ts": [
+              1700661978739
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1700661978739,
+              "classification": "bookmark"
+            },
+            "count": 1,
+            "data_text_contains": "instagram.com/p/",
+            "metadata": {
+              "Kind": "post",
+              "Author": "pickuplines"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "ig-msg-share-others-story",
+      "source": "instagram",
+      "entity": "message",
+      "subtype": "link to someone else's story (expired by design) with typed text",
+      "select": {
+        "messages": [
+          {
+            "thread": "inbox/evgenianikolova_1117740222948253",
+            "ts": [
+              1740333431661
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1740333431661,
+              "classification": "message"
+            },
+            "count": 1,
+            "data_text_contains": "излъгах",
+            "edges_out": [
+              {
+                "label": "attachment",
+                "to_item": {
+                  "classification": "bookmark"
+                }
+              }
+            ]
+          },
+          {
+            "where": {
+              "ts": 1740333431661,
+              "classification": "bookmark"
+            },
+            "count": 1,
+            "metadata": {
+              "Kind": "story",
+              "Status": "expired"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "ig-msg-share-profile-link",
+      "source": "instagram",
+      "entity": "message",
+      "subtype": "link to a profile (typed URL that Instagram also lifted into share)",
+      "select": {
+        "messages": [
+          {
+            "thread": "inbox/evgenianikolova_1117740222948253",
+            "ts": [
+              1761503853276
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1761503853276,
+              "classification": "bookmark"
+            },
+            "count": 1,
+            "metadata": {
+              "Kind": "profile"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "ig-msg-share-giphy",
+      "source": "instagram",
+      "entity": "message",
+      "subtype": "GIF sent via Giphy (arrives as a share link, not a gifs[] attachment)",
+      "select": {
+        "messages": [
+          {
+            "thread": "inbox/loragerova_1301783014542901",
+            "ts": [
+              1766859926602
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1766859926602,
+              "classification": "bookmark"
+            },
+            "count": 1,
+            "data_text_contains": "giphy.com",
+            "metadata": {
+              "Kind": "external"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "ig-msg-share-external",
+      "source": "instagram",
+      "entity": "message",
+      "subtype": "external links (ChatGPT share, YouTube) with the URL also typed as text",
+      "select": {
+        "messages": [
+          {
+            "thread": "inbox/orestiszavlis_475634757168061",
+            "ts": [
+              1754588092026
+            ]
+          },
+          {
+            "thread": "inbox/marina_455013059223478",
+            "ts": [
+              1721038415049
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1754588092026,
+              "classification": "message"
+            },
+            "count": 1,
+            "data_text_contains": "chatgpt.com/share"
+          },
+          {
+            "where": {
+              "ts": 1754588092026,
+              "classification": "bookmark"
+            },
+            "count": 1,
+            "metadata": {
+              "Kind": "external"
+            }
+          },
+          {
+            "where": {
+              "ts": 1721038415049,
+              "classification": "bookmark"
+            },
+            "count": 1,
+            "data_text_contains": "youtube.com"
+          }
+        ]
+      }
+    },
+    {
+      "id": "ig-msg-share-facebook-video",
+      "source": "instagram",
+      "entity": "message",
+      "subtype": "Facebook video link inside an Instagram DM",
+      "select": {
+        "messages": [
+          {
+            "thread": "inbox/bojidar_1161772181878693",
+            "ts": [
+              1739387873465
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1739387873465,
+              "classification": "bookmark"
+            },
+            "count": 1,
+            "metadata": {
+              "Kind": "video"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "ig-msg-call",
+      "source": "instagram",
+      "entity": "message",
+      "subtype": "video call record (call_duration)",
+      "known_issue": "call_duration is ignored; imported as the text 'Video chat ended'",
+      "select": {
+        "messages": [
+          {
+            "thread": "inbox/cosminalexandruhuzum_525755352146013",
+            "ts": [
+              1627472689390
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1627472689390
+            },
+            "count": 1,
+            "classification": "message",
+            "data_text": "Video chat ended"
+          }
+        ]
+      }
+    },
+    {
+      "id": "ig-msg-dropped-pin",
+      "source": "instagram",
+      "entity": "message",
+      "subtype": "shared location ('Dropped pin' + Google Maps link)",
+      "known_issue": "no location item/coordinates extracted; becomes text + external bookmark",
+      "select": {
+        "messages": [
+          {
+            "thread": "inbox/cosminalexandruhuzum_525755352146013",
+            "ts": [
+              1611404213888
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1611404213888,
+              "classification": "message"
+            },
+            "count": 1,
+            "data_text_contains": "Dropped pin"
+          }
+        ]
+      }
+    },
+    {
+      "id": "ig-msg-typed-link-autoreply",
+      "source": "instagram",
+      "entity": "message",
+      "subtype": "business auto-reply text containing a URL, no share object",
+      "select": {
+        "messages": [
+          {
+            "thread": "inbox/novosalsadanceclassesinsofia_1345618983498203",
+            "ts": [
+              1712503495483
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1712503495483
+            },
+            "count": 1,
+            "classification": "message",
+            "data_text_contains": "auto-reply"
+          }
+        ]
+      }
+    },
+    {
+      "id": "ig-msg-message-requests",
+      "source": "instagram",
+      "entity": "message",
+      "subtype": "thread in message_requests/ (not inbox) sharing your own story",
+      "why": "message_requests was not walked upstream; it also exercises own-story matching from the counterpart's side.",
+      "select": {
+        "stories": [
+          "18180676723160886.jpg"
+        ],
+        "messages": [
+          {
+            "thread": "message_requests/thecrystalcove_340983004567731",
+            "ts": [
+              1644832099667
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1644832099667,
+              "classification": "message"
+            },
+            "count": 1,
+            "data_text": "Wow that looks amazing!!",
+            "owner": "The Crystal Cove",
+            "edges_out": [
+              {
+                "label": "quotes",
+                "to_item": {
+                  "data_file_contains": "18180676723160886"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-post-status-text",
+      "source": "facebook",
+      "entity": "post",
+      "subtype": "status update, text only",
+      "select": {
+        "posts": [
+          85
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1700438332000,
+              "classification": "social"
+            },
+            "count": 1,
+            "has_text": true,
+            "owner": "nikbpetrov",
+            "metadata": {
+              "Title": "Nikolay Petrov updated his status."
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-post-shared-link-with-text",
+      "source": "facebook",
+      "entity": "post",
+      "subtype": "shared external link with own text",
+      "why": "Shared links become bookmark items keyed by canonical URL (upstream stored them as nameless ClassLocation items, which the empty-item pruning then removed).",
+      "select": {
+        "posts": [
+          0
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1305666562000,
+              "classification": "social"
+            },
+            "count": 1,
+            "has_text": true,
+            "edges_out": [
+              {
+                "label": "attachment",
+                "to_item": {
+                  "classification": "bookmark",
+                  "data_text_contains": "http"
+                }
+              }
+            ]
+          },
+          {
+            "where": {
+              "ts": 1305666562000,
+              "classification": "bookmark"
+            },
+            "count": 1,
+            "metadata_has": [
+              "URL",
+              "Kind",
+              "Status"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-post-shared-link-no-text",
+      "source": "facebook",
+      "entity": "post",
+      "subtype": "shared link without any text (empty root post)",
+      "select": {
+        "posts": [
+          36
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1355078309000,
+              "classification": "social"
+            },
+            "count": 1,
+            "data_text": null,
+            "edges_out_count": {
+              "attachment": 1
+            }
+          },
+          {
+            "where": {
+              "ts": 1355078309000,
+              "classification": "bookmark"
+            },
+            "count": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-post-photo",
+      "source": "facebook",
+      "entity": "post",
+      "subtype": "single photo with text",
+      "select": {
+        "posts": [
+          76
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1710356155000,
+              "classification": "social",
+              "has_file": true
+            },
+            "count": 1,
+            "data_type_prefix": "image/"
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-post-video",
+      "source": "facebook",
+      "entity": "post",
+      "subtype": "single video with text",
+      "select": {
+        "posts": [
+          71
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1715198609000,
+              "classification": "social"
+            },
+            "count": 1,
+            "has_text": true,
+            "edges_out_count": {
+              "attachment": 1
+            }
+          },
+          {
+            "where": {
+              "classification": "social",
+              "data_file": "3701647923444080.mp4"
+            },
+            "count": 1,
+            "data_type_prefix": "video/",
+            "metadata_has": [
+              "Description"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-post-multi-photo-no-text",
+      "source": "facebook",
+      "entity": "post",
+      "subtype": "2 photos, no text",
+      "select": {
+        "posts": [
+          131
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1658596368000,
+              "classification": "social",
+              "has_file": true
+            },
+            "count": 2
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-post-many-photos-and-video",
+      "source": "facebook",
+      "entity": "post",
+      "subtype": "12 photos + 1 video with text",
+      "select": {
+        "posts": [
+          115
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1683359340000,
+              "classification": "social",
+              "has_text": true
+            },
+            "count": 1,
+            "edges_out_count": {
+              "attachment": 13
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-post-video-with-place",
+      "source": "facebook",
+      "entity": "post",
+      "subtype": "video + place tag",
+      "select": {
+        "posts": [
+          116
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1683051197000,
+              "classification": "social",
+              "has_text": true
+            },
+            "count": 1,
+            "edges_out": [
+              {
+                "label": "attachment",
+                "to_entity_type": "place"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-post-place-only",
+      "source": "facebook",
+      "entity": "post",
+      "subtype": "'was travelling to' with a place attachment and no media",
+      "select": {
+        "posts": [
+          241
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1529676582000,
+              "classification": "social"
+            },
+            "count": 1,
+            "edges_out": [
+              {
+                "label": "attachment",
+                "to_entity_type": "place"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-post-life-event",
+      "source": "facebook",
+      "entity": "post",
+      "subtype": "life event attachment",
+      "known_issue": "life_event attachments are ignored, so the post has no content and is pruned entirely; should become an event/note item",
+      "select": {
+        "posts": [
+          117
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1681412938000,
+              "classification": "social"
+            },
+            "count": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-post-event-share",
+      "source": "facebook",
+      "entity": "post",
+      "subtype": "shared an event (event attachment)",
+      "known_issue": "event attachments are ignored, so the post is pruned entirely",
+      "select": {
+        "posts": [
+          88
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1694611731000,
+              "classification": "social"
+            },
+            "count": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-post-wrote-on-timeline",
+      "source": "facebook",
+      "entity": "post",
+      "subtype": "wrote on someone else's profile (title carries the recipient; Facebook renamed 'timeline' to 'profile')",
+      "select": {
+        "posts": [
+          344
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1458629813000,
+              "classification": "social"
+            },
+            "count": 1,
+            "edges_out": [
+              {
+                "label": "sent",
+                "to_entity_contains": "Nikolay Dimitrov"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-post-shared-from-instagram",
+      "source": "facebook",
+      "entity": "post",
+      "subtype": "cross-posted from Instagram (media + place)",
+      "select": {
+        "posts": [
+          166
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1634329276000,
+              "classification": "social",
+              "has_text": true
+            },
+            "count": 1,
+            "metadata": {
+              "Title": "Nikolay Petrov Shared from Instagram"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-post-featured-item",
+      "source": "facebook",
+      "entity": "post",
+      "subtype": "'added an item to the featured section' (media, no text)",
+      "select": {
+        "posts": [
+          333
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1630289846000,
+              "classification": "social"
+            },
+            "count": 1,
+            "data_text": null,
+            "edges_out_count": {
+              "attachment": 1
+            }
+          },
+          {
+            "where": {
+              "classification": "social",
+              "data_file": "2304296989712704.mp4"
+            },
+            "count": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-post-empty",
+      "source": "facebook",
+      "entity": "post",
+      "subtype": "'posted something via <app>' with no text and no attachments",
+      "why": "Nothing to show; the pipeline prunes empty items without edges.",
+      "select": {
+        "posts": [
+          91
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1379706636000
+            },
+            "count": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-post-shared-reel",
+      "source": "facebook",
+      "entity": "post",
+      "subtype": "shared a reel: export carries only the title and an empty external_context url",
+      "select": {
+        "posts": [
+          258
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1513201083000,
+              "classification": "social"
+            },
+            "count": 0
+          }
+        ]
+      },
+      "known_issue": "the export carries only the title and an empty external_context url, so the post is pruned entirely"
+    },
+    {
+      "id": "fb-tagged-place",
+      "source": "facebook",
+      "entity": "place",
+      "subtype": "places_you_have_been_tagged_in entry (visit without coordinates)",
+      "select": {
+        "tagged_places": [
+          0
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1697144606000,
+              "classification": "location"
+            },
+            "count": 1,
+            "edges_out": [
+              {
+                "label": "visit",
+                "to_entity": "University of Cambridge"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-album-photo",
+      "source": "facebook",
+      "entity": "album",
+      "subtype": "photo listed in an album manifest (posts/album/N.json)",
+      "select": {
+        "albums": [
+          {
+            "file": "0.json",
+            "photos": [
+              0
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "classification": "media",
+              "data_file": "1711705882241814.jpg"
+            },
+            "count": 1,
+            "edges_out": [
+              {
+                "label": "in_collection",
+                "to_item": {
+                  "classification": "collection",
+                  "data_text": "Cover photos"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-uncategorized-photo",
+      "source": "facebook",
+      "entity": "media",
+      "subtype": "your_uncategorized_photos entry",
+      "select": {
+        "uncategorized_photos": [
+          0
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "classification": "media",
+              "data_file": "206217716123979.jpg"
+            },
+            "count": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-msg-text-with-reaction",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "text with own reaction, inbox thread",
+      "select": {
+        "messages": [
+          {
+            "thread": "inbox/deyanakostova_1686851964727206",
+            "ts": [
+              1613983425053,
+              1599720359752
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1613983425053
+            },
+            "count": 1,
+            "classification": "message",
+            "data_text_contains": "Нямам думи",
+            "owner": "Deyana Kostova",
+            "edges_in": [
+              {
+                "label": "reacted",
+                "from_entity": "Nikolay Petrov"
+              }
+            ],
+            "edges_out": [
+              {
+                "label": "sent",
+                "to_entity": "Nikolay Petrov"
+              }
+            ]
+          },
+          {
+            "where": {
+              "ts": 1599720359752
+            },
+            "count": 1,
+            "classification": "message"
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-msg-sticker",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "sticker (file under messages/stickers_used/)",
+      "select": {
+        "messages": [
+          {
+            "thread": "inbox/deyanakostova_1686851964727206",
+            "ts": [
+              1599704228490
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1599704228490
+            },
+            "count": 1,
+            "classification": "message",
+            "data_file": "369239263222822.png",
+            "data_type_prefix": "image/"
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-msg-photo",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "photo attachment (png)",
+      "select": {
+        "messages": [
+          {
+            "thread": "inbox/deyanakostova_1686851964727206",
+            "ts": [
+              1526135403472
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "classification": "message",
+              "data_file": "1221995744603279.png"
+            },
+            "count": 1,
+            "data_type_prefix": "image/",
+            "owner": "Deyana Kostova"
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-msg-ip-key",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "message carrying an 'ip' field (13k in export)",
+      "known_issue": "the ip field is ignored; empty-content messages with only ip produce no item",
+      "select": {
+        "messages": [
+          {
+            "thread": "inbox/deyanakostova_1686851964727206",
+            "ts": [
+              1523723522488
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1523723522488
+            },
+            "count": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-msg-e2ee-thread",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "thread migrated to end-to-end encryption (messages/e2ee_cutover/)",
+      "select": {
+        "messages": [
+          {
+            "thread": "e2ee_cutover/loragerova_8014936955182913",
+            "ts": [
+              1721836994133,
+              1721658382244
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1721836994133
+            },
+            "count": 1,
+            "classification": "message",
+            "data_text": "2030 ще дойдат"
+          },
+          {
+            "where": {
+              "ts": 1721658382244
+            },
+            "count": 1,
+            "edges_in": [
+              {
+                "label": "reacted",
+                "from_entity": "Nikolay Petrov",
+                "value": "👍"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-msg-call",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "call record ('You called Lora.' + call_duration)",
+      "known_issue": "call_duration ignored",
+      "select": {
+        "messages": [
+          {
+            "thread": "e2ee_cutover/loragerova_8014936955182913",
+            "ts": [
+              1721815505435
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1721815505435
+            },
+            "count": 1,
+            "classification": "message",
+            "data_text": "You called Lora."
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-msg-missed-call",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "missed call (missed: true)",
+      "select": {
+        "messages": [
+          {
+            "thread": "e2ee_cutover/ivelinastoanova_1096863243674856",
+            "ts": [
+              1556393055082
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1556393055082
+            },
+            "count": 1,
+            "classification": "message",
+            "data_text_contains": "missed a call"
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-msg-share-external-with-text",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "typed text + external link share (bookmark metadata_only)",
+      "select": {
+        "messages": [
+          {
+            "thread": "e2ee_cutover/loragerova_8014936955182913",
+            "ts": [
+              1721806478106,
+              1721792640526
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1721806478106,
+              "classification": "message"
+            },
+            "count": 1,
+            "data_text_contains": "That should work",
+            "edges_out": [
+              {
+                "label": "attachment",
+                "to_item": {
+                  "classification": "bookmark",
+                  "data_text": "https://api.nikolaybpetrov.com/homebills"
+                }
+              }
+            ]
+          },
+          {
+            "where": {
+              "ts": 1721792640526,
+              "classification": "bookmark"
+            },
+            "count": 1,
+            "metadata": {
+              "Kind": "external"
+            },
+            "metadata_has": [
+              "Caption"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-msg-video",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "video attachment in e2ee thread",
+      "select": {
+        "messages": [
+          {
+            "thread": "e2ee_cutover/loragerova_8014936955182913",
+            "ts": [
+              1721658496613
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "classification": "message",
+              "data_file": "2025896401141634.mp4"
+            },
+            "count": 1,
+            "data_type_prefix": "video/"
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-msg-photo-e2ee",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "photo attachment in e2ee thread",
+      "select": {
+        "messages": [
+          {
+            "thread": "e2ee_cutover/loragerova_8014936955182913",
+            "ts": [
+              1721645576499
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "classification": "message",
+              "data_file": "1002281671275035.jpg"
+            },
+            "count": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-msg-audio",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "voice message (audio in .mp4 container)",
+      "select": {
+        "messages": [
+          {
+            "thread": "e2ee_cutover/loragerova_8014936955182913",
+            "ts": [
+              1721645291716
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "classification": "message",
+              "data_file": "1015598347016517.mp4"
+            },
+            "count": 1,
+            "data_type_prefix": "audio/"
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-msg-location-share",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "'Lora sent a location.' with a Bing maps link",
+      "known_issue": "no coordinates extracted; text + external bookmark",
+      "select": {
+        "messages": [
+          {
+            "thread": "e2ee_cutover/loragerova_8014936955182913",
+            "ts": [
+              1721379577626
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1721379577626,
+              "classification": "bookmark"
+            },
+            "count": 1,
+            "data_text_contains": "bing.com"
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-msg-gif",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "gifs[] attachment",
+      "select": {
+        "messages": [
+          {
+            "thread": "e2ee_cutover/loragerova_8014936955182913",
+            "ts": [
+              1721221721184
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1721221721184
+            },
+            "count": 1,
+            "classification": "message",
+            "data_file": "1651376062371150.gif",
+            "data_type_prefix": "image/"
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-msg-share-instagram-reel",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "Instagram reel link inside Messenger",
+      "select": {
+        "messages": [
+          {
+            "thread": "e2ee_cutover/loragerova_8014936955182913",
+            "ts": [
+              1718450521955
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1718450521955,
+              "classification": "bookmark"
+            },
+            "count": 1,
+            "metadata": {
+              "Kind": "reel"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-msg-file",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "files[] attachment (pdf)",
+      "known_issue": "files[] is not imported at all (549 in export)",
+      "select": {
+        "messages": [
+          {
+            "thread": "e2ee_cutover/loragerova_8014936955182913",
+            "ts": [
+              1718350113416
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1718350113416
+            },
+            "count": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-msg-unsent",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "unsent message (is_unsent, no content)",
+      "select": {
+        "messages": [
+          {
+            "thread": "e2ee_cutover/loragerova_8014936955182913",
+            "ts": [
+              1715887970157
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1715887970157
+            },
+            "count": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-msg-pseudo-reaction",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "'Reacted X to your message' also exists in Messenger (rare: 28)",
+      "known_issue": "same as ig-msg-pseudo-reaction",
+      "select": {
+        "messages": [
+          {
+            "thread": "inbox/fiestavibes_5503160726366504",
+            "ts": [
+              1658750964869
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1658750964869
+            },
+            "count": 1,
+            "classification": "message",
+            "data_text": "Reacted 😆 to your message"
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-msg-share-fb-reel",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "Facebook reel share in an archived thread",
+      "select": {
+        "messages": [
+          {
+            "thread": "archived_threads/mentalistite_5916130388441901",
+            "ts": [
+              1690621498182
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1690621498182,
+              "classification": "bookmark"
+            },
+            "count": 1,
+            "metadata": {
+              "Kind": "video"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-msg-share-group-post-and-event",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "Facebook group post and event links (metadata only, never fetched); group thread in message_requests",
+      "select": {
+        "messages": [
+          {
+            "thread": "message_requests/golemiatcat_2129992207062014",
+            "ts": [
+              1685368077080,
+              1739975833445
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1685368077080,
+              "classification": "bookmark"
+            },
+            "count": 1,
+            "metadata": {
+              "Kind": "group_post",
+              "Status": "metadata_only"
+            }
+          },
+          {
+            "where": {
+              "ts": 1739975833445,
+              "classification": "bookmark"
+            },
+            "count": 1,
+            "metadata": {
+              "Kind": "event"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-msg-share-youtube",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "YouTube link with caption",
+      "select": {
+        "messages": [
+          {
+            "thread": "message_requests/golemiatcat_2129992207062014",
+            "ts": [
+              1728220466345
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1728220466345,
+              "classification": "bookmark"
+            },
+            "count": 1,
+            "data_text_contains": "youtube.com/watch"
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-msg-share-fb-photo-php",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "old-style facebook.com/photo.php?fbid= link (query string must survive canonicalization)",
+      "select": {
+        "messages": [
+          {
+            "thread": "e2ee_cutover/victorivanov_987716987939243",
+            "ts": [
+              1484414711077
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1484414711077,
+              "classification": "bookmark"
+            },
+            "count": 1,
+            "data_text_contains": "fbid=",
+            "metadata": {
+              "Kind": "photo"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-msg-share-fbcdn-image",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "raw fbcdn image URL pasted as text (legacy image sharing)",
+      "select": {
+        "messages": [
+          {
+            "thread": "e2ee_cutover/marinaaneva_887455161333561",
+            "ts": [
+              1485564041643
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1485564041643,
+              "classification": "bookmark"
+            },
+            "count": 1,
+            "data_text_contains": "fbcdn.net"
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-msg-taken-down",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "message with is_taken_down (moderated content)",
+      "select": {
+        "messages": [
+          {
+            "thread": "inbox/bachataloverssofiachat_6338047269546821",
+            "ts": [
+              1744301885517
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1744301885517
+            },
+            "count": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-msg-filtered-thread",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "group event text in filtered_threads/ ('A contact left the group.')",
+      "select": {
+        "messages": [
+          {
+            "thread": "filtered_threads/adamstephenanthonyand243others_5374413252673113",
+            "ts": [
+              1691935077012
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1691935077012
+            },
+            "count": 1,
+            "classification": "message",
+            "data_text": "A contact left the group."
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-msg-archived-thread",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "plain English text in archived_threads/ (marketplace)",
+      "select": {
+        "messages": [
+          {
+            "thread": "archived_threads/arjay2beds2bathsroomonly_7650016228410023",
+            "ts": [
+              1718031329440
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1718031329440
+            },
+            "count": 1,
+            "classification": "message",
+            "data_text": "Hi, is this available?"
+          }
+        ]
+      }
+    }
+  ],
+  "checks": [
+    {
+      "id": "no-mojibake-entities",
+      "sql": "select count(*) from entities where name like '%Ð%' or name like '%Ñ%'",
+      "expect": 0
+    },
+    {
+      "id": "no-links-as-message-text",
+      "sql": "select count(*) from items i join classifications c on c.id=i.classification_id where c.name='message' and (i.data_text like '%instagram.com/reel/%' or i.data_text like '%instagram.com/p/%' or i.data_text like '%facebook.com/reel/%') and i.id not in (select r.from_item_id from relationships r join items b on b.id=r.to_item_id join classifications bc on bc.id=b.classification_id where bc.name='bookmark' and r.from_item_id is not null)",
+      "expect": 0,
+      "_note": "a message may legitimately contain a link the sender typed; it must then also have its bookmark attached"
+    },
+    {
+      "id": "no-placeholder-text",
+      "sql": "select count(*) from items where data_text like '% sent an attachment.'",
+      "expect": 0
+    },
+    {
+      "id": "no-media-without-file",
+      "sql": "select count(*) from items i join classifications c on c.id=i.classification_id where c.name='media' and i.data_file is null",
+      "expect": 0
+    },
+    {
+      "id": "no-message-attachments-without-data",
+      "sql": "select count(*) from items i join classifications c on c.id=i.classification_id where c.name='message' and i.data_text is null and i.data_file is null and i.id not in (select from_item_id from relationships where from_item_id is not null)",
+      "expect": 0
+    },
+    {
+      "id": "bookmarks-have-kind",
+      "sql": "select count(*) from items i join classifications c on c.id=i.classification_id where c.name='bookmark' and json_extract(i.metadata,'$.Kind') is null",
+      "expect": 0
+    },
+    {
+      "id": "no-empty-unlinked-items",
+      "sql": "select count(*) from items where data_text is null and data_file is null and latitude is null and retrieval_key is null and id not in (select from_item_id from relationships where from_item_id is not null) and id not in (select to_item_id from relationships where to_item_id is not null)",
+      "expect": 0,
+      "_note": "pipeline prunes empty items without edges (upstream NOT IN NULL bug fixed on fork)"
+    }
+  ]
+}

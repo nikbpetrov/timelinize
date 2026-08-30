@@ -166,6 +166,9 @@ const app = {
 	RepositoryIsEmpty(repoID) {
 		 return post("/api/repository-empty", repoID);
 	},
+	ItemDebug(params) {
+		return post("/api/item-debug", params, "QUERY");
+	},
 	SearchItems(params) {
 		return post("/api/search-items", params);
 	},

@@ -444,6 +444,11 @@ func (j immichJob) processOne(ctx context.Context, tl *Timeline, store *immichSt
 		})
 		f.Close()
 		if err != nil {
+			var ie *immich.Error
+			if errors.As(err, &ie) && ie.Status == 400 {
+				log.Warn("Immich rejected the file (unsupported format); skipping", zap.String("error", ie.Body))
+				return "rejected", 0, nil
+			}
 			return "upload_failed", 0, fmt.Errorf("uploading: %w", err)
 		}
 		status, assetID = res.Status, res.ID

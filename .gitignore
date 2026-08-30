@@ -6,3 +6,8 @@ My Timeline
 cookies*
 *.key
 /scratch/
+
+# fork: test tooling
+tests/ui/node_modules/
+tests/ui/test-results/
+tests/ui/report/

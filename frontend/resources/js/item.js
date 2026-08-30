@@ -32,6 +32,16 @@ async function itemPageMain() {
 	
 	$('#item-id').innerText = item.id;
 
+	// fork: developer debug panel (?debug=1 turns it on and remembers it; ?debug=0 turns it off)
+	const debugParam = new URLSearchParams(location.search).get('debug');
+	if (debugParam === '0') { try { localStorage.removeItem('tlz_debug'); } catch {} }
+	else if (debugParam) { try { localStorage.setItem('tlz_debug', '1'); } catch {} }
+	let debugOn = false;
+	try { debugOn = localStorage.getItem('tlz_debug') === '1'; } catch {}
+	if (debugOn) {
+		renderItemDebug(repoID, item.id).catch(err => console.error("item debug panel:", err));
+	}
+
 	// download button
 	// server may need to create a synthetic file for download if it's not a data file already
 	$('#download-item').href = `/repo/${repoID}/dl/${item.id}`;
@@ -363,3 +373,56 @@ on('click', '.motionpic-controls .icon-tabler-player-play', e => {
 	$$('#item-content .content').forEach(elem => elem.classList.add('d-none'));
 	$('#item-content .thumbhash-container')?.classList?.add('d-none');
 });
+
+
+// renderItemDebug fetches the item-debug endpoint and renders every section as a
+// collapsible block of raw JSON, with links to the data file, the Immich asset and
+// related items/entities. Developer tooling; enabled per browser with ?debug=1.
+async function renderItemDebug(repoID, itemID) {
+	const d = await app.ItemDebug({ repo: repoID, item_id: Number(itemID) });
+	const root = $('#item-debug');
+	root.classList.remove('d-none');
+	$('#item-debug-body').innerHTML = '';
+	const section = (key, title, value, open) => {
+		if (value == null || (Array.isArray(value) && value.length == 0) || (typeof value == 'object' && !Array.isArray(value) && Object.keys(value).length == 0)) return;
+		const det = document.createElement('details');
+		det.dataset.section = key;
+		if (open) det.open = true;
+		const sum = document.createElement('summary');
+		sum.className = 'fw-bold';
+		sum.textContent = title;
+		det.append(sum);
+		const pre = document.createElement('pre');
+		pre.className = 'small mb-2';
+		pre.style.whiteSpace = 'pre-wrap';
+		pre.textContent = JSON.stringify(value, null, 2);
+		det.append(pre);
+		$('#item-debug-body').append(det);
+		return det;
+	};
+	const links = document.createElement('div');
+	links.className = 'mb-2 small';
+	const link = (href, text) => { const a = document.createElement('a'); a.href = href; a.target = '_blank'; a.textContent = text; a.className = 'me-3'; links.append(a); };
+	link(`/api/item-debug?repo=${encodeURIComponent(repoID)}&item_id=${itemID}`, 'raw JSON');
+	if (d.data_file) link(d.data_file.serve_url, 'data file');
+	if (d.immich?.web_url) link(d.immich.web_url, 'open in Immich');
+	if (d.immich?.original_url) link(d.immich.original_url, 'Immich original');
+	for (const e of d.entities || []) link(`/entities/${repoID}/${e.id}`, `entity ${e.id}: ${e.name || e.type}`);
+	for (const id of Object.keys(d.items_referenced || {})) link(`/items/${repoID}/${id}?debug=1`, `item ${id}`);
+	$('#item-debug-body').append(links);
+	if (d.warnings?.length) {
+		const w = document.createElement('div'); w.className = 'alert alert-warning py-1 small'; w.textContent = d.warnings.join('; '); $('#item-debug-body').append(w);
+	}
+	section('summary', `${d.classification || '(no class)'} from ${d.data_source}`, { classification: d.classification, data_source: d.data_source, repo_dir: d.repo_dir, generated: d.generated }, false);
+	section('item', 'items row (as stored)', d.item, true);
+	section('owner', 'owner (attribute -> entity)', d.owner, true);
+	section('edges_out', `relationships out (${(d.edges_out||[]).length})`, d.edges_out, true);
+	section('edges_in', `relationships in (${(d.edges_in||[]).length})`, d.edges_in, true);
+	section('items_referenced', 'items at the other end of edges', d.items_referenced, false);
+	section('entities', 'entities at the other end of edges (with attributes)', d.entities, false);
+	section('data_file', 'data file on disk', d.data_file, true);
+	section('immich', 'Immich asset', d.immich, true);
+	section('link_fetch', 'link fetch cache entry', d.link_fetch, true);
+	section('thumbnail', 'thumbnail cache', d.thumbnail, false);
+	section('job', 'import job', d.job, false);
+}

@@ -88,6 +88,15 @@ func (tl *Timeline) ID() uuid.UUID  { return tl.id }
 
 func (tl *Timeline) SetObfuscationFunc(f func() (ObfuscationOptions, bool)) { tl.obfuscationMode = f }
 
+// obfuscation reports the app's obfuscation setting, or "off" when no app configured one
+// (e.g. when the package is used directly, as in tests) instead of panicking on a nil func.
+func (tl *Timeline) obfuscation() (ObfuscationOptions, bool) {
+	if tl.obfuscationMode == nil {
+		return ObfuscationOptions{}, false
+	}
+	return tl.obfuscationMode()
+}
+
 // TODO: refactor Create() and Open() to use AssessFolder() instead of duplicating logic
 
 // Create creates and opens a new timeline in the given repo path, which need not

@@ -24,7 +24,15 @@
 
 Details per topic: `link-fetching.md`, `immich-media-store.md`, `backlog.md`, `exports.md`; commands in `README.md`.
 
+## Testing pipeline (2026-08-30) — see `testing.md`
+`testdata/meta/cases.json` (68 cases over posts / stories / messages / places / albums, with expectations) →
+`scripts/build-testing-data.py` (mini export under `testing-data/`) → `go test ./tests/meta` (real pipeline, ~4 s) and
+`scripts/dev-reset.sh` + `tests/ui` Playwright (item pages with the `?debug=1` panel, conversations). First run found 7
+bugs (backlog #18–#24).
+
 ## Next
+0. **Decide on reaction pseudo-messages** (#25): drop them (and optionally keep their time on the `reacted` edge).
+   The cases are in place; flipping the expectations is a one-line change.
 1. **Run on the main repo** (`/mnt/photos/timelinize/repo`, server :12002): add `link_fetch` + `immich` to
    `~/.config/timelinize/config.json` (same shape as the dev config), rebuild `timelinize`, then re-import both exports
    (no filters, `link_fetch.max_per_import` unset). Expect ~3,000 link fetches at 3 s delay (~3 h) — run overnight, watch

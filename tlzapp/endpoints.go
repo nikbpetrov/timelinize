@@ -103,6 +103,13 @@ func (app *App) registerCommands() {
 			Payload: getEntityPayload{},
 			Help:    "Returns information about the given entity.",
 		},
+		"item-debug": {
+			Handler:     app.server.handleItemDebug,
+			Method:      methodQuery,
+			Payload:     itemDebugPayload{},
+			ContentType: JSON,
+			Help:        "Returns everything the repository knows about one item (raw row, edges, owner, data file, Immich, link fetch, job) for troubleshooting (fork).",
+		},
 		"immich-status": {
 			Handler:     app.server.handleImmichStatus,
 			Method:      methodQuery,

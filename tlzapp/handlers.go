@@ -532,3 +532,14 @@ func (s *server) handleImmichSync(w http.ResponseWriter, r *http.Request) error 
 	jobID, err := s.app.ImmichSync(payload.Repo, payload.ImportJobID, payload.Evict)
 	return jsonResponse(w, map[string]uint64{"job_id": jobID}, err)
 }
+
+type itemDebugPayload struct {
+	Repo   string `json:"repo"`
+	ItemID int64  `json:"item_id"`
+}
+
+func (s *server) handleItemDebug(w http.ResponseWriter, r *http.Request) error {
+	payload := r.Context().Value(ctxKeyPayload).(*itemDebugPayload)
+	d, err := s.app.ItemDebug(r.Context(), payload.Repo, payload.ItemID)
+	return jsonResponse(w, d, err)
+}

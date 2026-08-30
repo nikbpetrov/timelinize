@@ -157,10 +157,11 @@ func (r *Resolver) Stats() map[string]int {
 	return out
 }
 
-// route decides which backend handles a request. Facebook pages/groups/events are
+// Route decides which backend handles a request and, for kinds that are never fetched,
+// the terminal status. Exported so callers can label bookmarks without a Resolver. Facebook pages/groups/events are
 // never scraped; stories are gone by design; profiles and external sites are
 // metadata-only.
-func route(req Request) (backend string, status string) {
+func Route(req Request) (backend string, status string) {
 	switch req.Kind {
 	case "story":
 		return BackendNone, StatusExpired
@@ -213,7 +214,7 @@ func (r *Resolver) Resolve(ctx context.Context, req Request) (Result, error) {
 		}
 	}
 
-	backend, terminal := route(req)
+	backend, terminal := Route(req)
 	res := Result{URL: req.URL, Kind: req.Kind, Site: req.Site, Backend: backend, TriedAt: time.Now()}
 	if prev, ok := r.loadCached(dir); ok {
 		res.Attempts = prev.Attempts

@@ -9,6 +9,7 @@ Working notes for the `nikbpetrov/timelinize` fork. Quick architecture reference
 | `exports.md` | What is actually in the ground-truth exports (Instagram, Facebook), reconciliation numbers, cookie handling |
 | `link-fetching.md` | Shared-link handling: URL taxonomy, yt-dlp / gallery-dl trial results, resolver design |
 | `immich-media-store.md` | Immich as canonical media store: design, verified API behaviour, permissions, open items |
+| `testing.md` | The testing pipeline: case manifest, fixture builder, Go harness, Playwright UI tests, item debug panel, taxonomy of export subtypes |
 
 Dev workflow (details in `CLAUDE.md`): main server :12002 -> `/mnt/photos/timelinize/repo` (full IG import);
 dev server :12003 (`XDG_CONFIG_HOME=/root/.config/timelinize-dev`) -> `repo-dev`, rebuilt in ~10 s from the
@@ -42,9 +43,10 @@ reels) / message 26 (8 share-only, no data) / bookmark 8; facebook message 29 / 
 | Script | What |
 |---|---|
 | `dev-reset.sh` | stop dev server, wipe `repo-dev`, restart, create repo, run `dev-import.sh` (~25 s incl. 5 link fetches) |
-| `dev-import.sh` | the two filtered imports above with unique constraints + `link_fetch` (`LF_MAX` fetches/import, default 5) |
+| `dev-import.sh` | imports the testing fixture (default) or, with `DEV_SOURCE=filtered`, the filtered subset below; unique constraints + `link_fetch` (`LF_MAX` fetches/import, default 5) |
 | `dev-counts.py [repo]` | items per source/classification, no-data counts, entities, mojibake |
 | `verify-import.py <source> <export> [filters]` | expected (from export, importer rules) vs actual; bookmarks by status, Immich mapping, job counters |
+| `build-testing-data.py` | builds the Meta testing fixture from `testdata/meta/cases.json` (see `testing.md`) |
 
 ## Dev config (`/root/.config/timelinize-dev/timelinize/config.json`)
 ```json

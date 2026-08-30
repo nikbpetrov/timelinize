@@ -535,7 +535,7 @@ func (ij ImportJob) deleteEmptyItems() error {
 			AND latitude IS NULL
 			AND altitude IS NULL
 			AND retrieval_key IS NULL
-			AND id NOT IN (SELECT from_item_id FROM relationships WHERE to_item_id IS NOT NULL OR to_attribute_id IS NOT NULL)`,
+			AND id NOT IN (SELECT from_item_id FROM relationships WHERE from_item_id IS NOT NULL AND (to_item_id IS NOT NULL OR to_attribute_id IS NOT NULL))`,
 		ij.job.id, ClassBookmark.Name) // TODO: consider deleting regardless of relationships existing (remember the iMessage data source until we figured out why some referred-to rows were totally missing?)
 	if err != nil {
 		return fmt.Errorf("querying empty items: %w", err)

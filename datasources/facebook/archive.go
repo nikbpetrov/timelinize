@@ -31,6 +31,7 @@ import (
 	"time"
 
 	"github.com/timelinize/timelinize/datasources/media"
+	"github.com/timelinize/timelinize/internal/linkfetch"
 	"github.com/timelinize/timelinize/timeline"
 	"go.uber.org/zap"
 )
@@ -263,9 +264,21 @@ func (a Archive) processPostsFile(ctx context.Context, d timeline.DirEntry, file
 					attachedItem.Classification = timeline.ClassSocial
 					attachment.Media.fillItem(attachedItem, d, postText, params.Log)
 				case attachment.ExternalContext.URL != "":
-					attachedItem.Content.Data = timeline.StringData(attachment.ExternalContext.Name)
-					attachedItem.Metadata["URL"] = attachment.ExternalContext.URL
-					attachedItem.Classification = timeline.ClassLocation
+					// a shared link: represent it like links shared in messages (a bookmark keyed by the
+					// canonical URL) so the URL survives even when Facebook gives it no name
+					canonical := canonicalShareURL(attachment.ExternalContext.URL)
+					attachedItem.ID = canonical
+					attachedItem.Classification = timeline.ClassBookmark
+					attachedItem.Content.Data = timeline.StringData(canonical)
+					attachedItem.Metadata["URL"] = canonical
+					attachedItem.Metadata["Kind"] = classifyShareURL(canonical)
+					attachedItem.Metadata["Status"] = shareStatusUnresolved
+					if backend, terminal := linkfetch.Route(linkfetch.Request{URL: canonical, Kind: classifyShareURL(canonical), Site: "facebook"}); backend == linkfetch.BackendNone && terminal != "" {
+						attachedItem.Metadata["Status"] = terminal
+					}
+					if name := FixString(attachment.ExternalContext.Name); name != "" {
+						attachedItem.Metadata["Title"] = name
+					}
 					attachedItem.Timestamp = item.Timestamp
 				case attachment.Place.Name != "" ||
 					attachment.Place.Address != "" ||
@@ -808,4 +821,4 @@ func FixString(malformed string) string {
 	return string(final)
 }
 
-var wroteOnOtherTimelineRegex = regexp.MustCompile(`.* wrote on (.*)'s timeline.`)
+var wroteOnOtherTimelineRegex = regexp.MustCompile(`.* wrote on (.*)'s (?:timeline|profile)\.`) // Facebook renamed "timeline" to "profile" in newer exports

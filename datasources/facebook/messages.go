@@ -213,8 +213,14 @@ func GetMessages(ctx context.Context, dsName string, dirEntry timeline.DirEntry,
 					if quoted != nil {
 						stats.ownStoriesMatched++
 					} else {
+						if status != shareStatusExpired {
+							// kinds that are never fetched are terminal right away, resolver or not
+							if backend, terminal := linkfetch.Route(linkfetch.Request{URL: canonical, Kind: kind, Site: dsName}); backend == linkfetch.BackendNone && terminal != "" {
+								status = terminal
+							}
+						}
 						bookmark = msg.Share.bookmarkItem(dsName, canonical, kind, status, msgTimestamp)
-						if resolver != nil && status != shareStatusExpired {
+						if resolver != nil && status == shareStatusUnresolved {
 							fetched, err := resolveShare(ctx, resolver, dsName, canonical, kind, msgTimestamp)
 							if err != nil {
 								return err
