@@ -21,6 +21,8 @@
 package facebook
 
 import (
+	"strings"
+
 	"github.com/timelinize/timelinize/timeline"
 	"go.uber.org/zap"
 )
@@ -43,4 +45,49 @@ type Options struct {
 	// Required input, since with multi-archive exports, there's no
 	// guarantee that the profile information is in the first archive.
 	Username string `json:"username,omitempty"`
+
+	Filters
+}
+
+// Filters restricts what is imported from a Meta (Facebook/Instagram)
+// archive. Zero values mean "no limit". Intended for development and
+// testing against large exports, where a full import takes a long time.
+type Filters struct {
+	// Import at most this many posts (0 = all).
+	MaxPosts int `json:"max_posts,omitempty"`
+
+	// Import at most this many stories (0 = all).
+	MaxStories int `json:"max_stories,omitempty"`
+
+	// Only import message threads whose folder name (e.g.
+	// "inbox/somebody_1234567890") contains one of these strings
+	// (empty = all threads).
+	Conversations []string `json:"conversations,omitempty"`
+
+	// Import at most this many messages per thread, newest first
+	// (0 = all). Attachments of an imported message are always included.
+	MaxMessagesPerConversation int `json:"max_messages_per_conversation,omitempty"`
+}
+
+func (f Filters) postsLimited(count int) bool   { return f.MaxPosts > 0 && count >= f.MaxPosts }
+func (f Filters) storiesLimited(count int) bool { return f.MaxStories > 0 && count >= f.MaxStories }
+
+// PostsLimited reports whether count posts already exceed the configured limit.
+func (f Filters) PostsLimited(count int) bool { return f.postsLimited(count) }
+
+// StoriesLimited reports whether count stories already exceed the configured limit.
+func (f Filters) StoriesLimited(count int) bool { return f.storiesLimited(count) }
+
+// wantThread reports whether the message thread at threadPath
+// (relative to the messages folder, e.g. "inbox/somebody_123") passes the filter.
+func (f Filters) wantThread(threadPath string) bool {
+	if len(f.Conversations) == 0 {
+		return true
+	}
+	for _, c := range f.Conversations {
+		if c != "" && strings.Contains(threadPath, c) {
+			return true
+		}
+	}
+	return false
 }

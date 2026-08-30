@@ -39,11 +39,17 @@ func init() {
 		Name:            "instagram",
 		Title:           "Instagram",
 		Icon:            "instagram.svg",
+		NewOptions:      func() any { return new(Options) },
 		NewFileImporter: func() timeline.FileImporter { return new(Client) },
 	})
 	if err != nil {
 		timeline.Log.Fatal("registering data source", zap.Error(err))
 	}
+}
+
+// Options configures an Instagram import.
+type Options struct {
+	facebook.Filters
 }
 
 // Client implements the timeline.Client interface.
@@ -66,6 +72,11 @@ func (Client) Recognize(_ context.Context, dirEntry timeline.DirEntry, _ timelin
 
 // FileImport imports data from the file or folder.
 func (c *Client) FileImport(_ context.Context, dirEntry timeline.DirEntry, params timeline.ImportParams) error {
+	dsOpt, _ := params.DataSourceOptions.(*Options)
+	if dsOpt == nil {
+		dsOpt = new(Options)
+	}
+
 	// first, load the profile information
 	pi, err := c.getPersonalInfo(dirEntry.FS)
 	if err != nil {
@@ -128,7 +139,11 @@ func (c *Client) FileImport(_ context.Context, dirEntry timeline.DirEntry, param
 	if err != nil {
 		return fmt.Errorf("loading index: %w", err)
 	}
-	for _, post := range postIdx {
+	for i, post := range postIdx {
+		if dsOpt.PostsLimited(i) {
+			break
+		}
+
 		// a post may have multiple media items, we'll treat them as attachments
 
 		var ig *timeline.Graph
@@ -167,7 +182,10 @@ func (c *Client) FileImport(_ context.Context, dirEntry timeline.DirEntry, param
 	if err != nil {
 		return err
 	}
-	for _, story := range storyIdx.IgStories {
+	for i, story := range storyIdx.IgStories {
+		if dsOpt.StoriesLimited(i) {
+			break
+		}
 		params.Pipeline <- &timeline.Graph{
 			Item: &timeline.Item{
 				Timestamp:            time.Unix(story.CreationTimestamp, 0).UTC(),
@@ -187,7 +205,7 @@ func (c *Client) FileImport(_ context.Context, dirEntry timeline.DirEntry, param
 	}
 
 	// messages
-	err = facebook.GetMessages("instagram", dirEntry, params)
+	err = facebook.GetMessages("instagram", dirEntry, params, dsOpt.Filters)
 	if err != nil {
 		return err
 	}

@@ -98,7 +98,11 @@ func (a Archive) FileImport(ctx context.Context, dirEntry timeline.DirEntry, par
 	postsFilePrefix := pre2024YourPostsPrefix
 
 	// posts
+	var postCount int
 	for i := 1; i < 10000; i++ {
+		if dsOpt.Filters.postsLimited(postCount) {
+			break
+		}
 		postsFilename := fmt.Sprintf("%s%d.json", postsFilePrefix, i)
 
 		postsFile, err := dirEntry.Open(postsFilename)
@@ -115,7 +119,7 @@ func (a Archive) FileImport(ctx context.Context, dirEntry timeline.DirEntry, par
 			return err
 		}
 
-		err = a.processPostsFile(ctx, dirEntry, postsFile, params)
+		err = a.processPostsFile(ctx, dirEntry, postsFile, params, dsOpt.Filters, &postCount)
 		postsFile.Close()
 		if err != nil {
 			return fmt.Errorf("processing %s: %w", postsFilename, err)
@@ -168,7 +172,7 @@ func (a Archive) FileImport(ctx context.Context, dirEntry timeline.DirEntry, par
 	}
 
 	// messages
-	err := GetMessages("facebook", dirEntry, params)
+	err := GetMessages("facebook", dirEntry, params, dsOpt.Filters)
 	if err != nil {
 		return err
 	}
@@ -176,7 +180,7 @@ func (a Archive) FileImport(ctx context.Context, dirEntry timeline.DirEntry, par
 	return nil
 }
 
-func (a Archive) processPostsFile(ctx context.Context, d timeline.DirEntry, file fs.File, params timeline.ImportParams) error {
+func (a Archive) processPostsFile(ctx context.Context, d timeline.DirEntry, file fs.File, params timeline.ImportParams, filters Filters, postCount *int) error {
 	var posts yourPosts
 	if err := json.NewDecoder(file).Decode(&posts); err != nil {
 		return err
@@ -186,6 +190,10 @@ func (a Archive) processPostsFile(ctx context.Context, d timeline.DirEntry, file
 		if err := ctx.Err(); err != nil {
 			return err
 		}
+		if filters.postsLimited(*postCount) {
+			return nil
+		}
+		*postCount++
 
 		var postText string
 		for _, postData := range post.Data {
@@ -692,7 +700,11 @@ func (a *Archive) setOwnerEntity(ctx context.Context, d timeline.DirEntry, optio
 		return nil
 	}
 
-	// these have to match to ensure the imported data is attributed consistently to the correct owner entity
+	// these have to match to ensure the imported data is attributed consistently to the correct owner entity;
+	// if no username was configured, the profile manifest is authoritative
+	if options.Username == "" {
+		options.Username = profileInfo.ProfileV2.Username
+	}
 	if profileInfo.ProfileV2.Username != options.Username {
 		return fmt.Errorf("configured username (%s) does not match what is in the profile manifest: %q",
 			options.Username, profileInfo.ProfileV2.Username)

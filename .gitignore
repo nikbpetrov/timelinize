@@ -2,3 +2,7 @@ _gitignore/
 _storage/
 My Timeline
 .DS_Store
+# fork: local secrets/scratch
+cookies*
+*.key
+/scratch/

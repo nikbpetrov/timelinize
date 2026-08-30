@@ -30,7 +30,9 @@ import (
 	"github.com/timelinize/timelinize/timeline"
 )
 
-func GetMessages(dsName string, dirEntry timeline.DirEntry, params timeline.ImportParams) error {
+// GetMessages imports Messenger/Instagram DM threads. filters may be
+// zero-valued to import everything.
+func GetMessages(dsName string, dirEntry timeline.DirEntry, params timeline.ImportParams, filters Filters) error {
 	// figure out which archive version we're working with
 	messagesInboxPrefix := messagesPrefix2025
 	if _, err := fs.Stat(dirEntry.FS, messagesInboxPrefix); errors.Is(err, fs.ErrNotExist) {
@@ -40,9 +42,15 @@ func GetMessages(dsName string, dirEntry timeline.DirEntry, params timeline.Impo
 		messagesInboxPrefix = pre2024MessagesPrefix
 	}
 
+	// messages imported per thread folder (threads may span several message_N.json files)
+	threadMsgCounts := make(map[string]int)
+
 	for _, messageSubfolder := range []string{
 		"inbox",
 		"archived_threads",
+		"message_requests",
+		"filtered_threads",
+		"e2ee_cutover", // Messenger threads migrated to end-to-end encryption (2024+)
 	} {
 		err := fs.WalkDir(dirEntry.FS, path.Join(messagesInboxPrefix, messageSubfolder), func(fpath string, d fs.DirEntry, err error) error {
 			if err != nil {
@@ -52,6 +60,12 @@ func GetMessages(dsName string, dirEntry timeline.DirEntry, params timeline.Impo
 				return nil
 			}
 			if path.Ext(d.Name()) != ".json" {
+				return nil
+			}
+
+			// thread folder relative to the messages folder, e.g. "inbox/somebody_123"
+			threadPath, _ := strings.CutPrefix(path.Dir(fpath), messagesInboxPrefix+"/")
+			if !filters.wantThread(threadPath) {
 				return nil
 			}
 
@@ -67,6 +81,11 @@ func GetMessages(dsName string, dirEntry timeline.DirEntry, params timeline.Impo
 			}
 
 			for _, msg := range thread.Messages {
+				if filters.MaxMessagesPerConversation > 0 && threadMsgCounts[threadPath] >= filters.MaxMessagesPerConversation {
+					break
+				}
+				threadMsgCounts[threadPath]++
+
 				senderName := FixString(msg.SenderName)
 				sender := timeline.Entity{
 					Name: senderName,
@@ -179,12 +198,13 @@ func GetMessages(dsName string, dirEntry timeline.DirEntry, params timeline.Impo
 					ig.ToEntity(timeline.RelSent, recipient)
 				}
 				for _, reaction := range msg.Reactions {
+					actor := FixString(reaction.Actor)
 					ig.FromEntityWithValue(&timeline.Entity{
-						Name: reaction.Actor,
+						Name: actor,
 						Attributes: []timeline.Attribute{
 							{
 								Name:     dsName + "_name",
-								Value:    reaction.Actor,
+								Value:    actor,
 								Identity: true,
 							},
 						},
