@@ -24,6 +24,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"go.uber.org/zap"
 	"math"
 	"os"
 	"path/filepath"
@@ -371,15 +372,20 @@ func (tl *Timeline) Search(ctx context.Context, params ItemSearchParams) (Search
 // TODO: favorites? or maybe a more flexible albums/lists feature? what to call it... "scrapbooks" or "curations"?
 
 func (tl *Timeline) convertNamesToIDs(params *ItemSearchParams) {
-	tl.cachesMu.RLock()
 	for _, className := range params.Classification {
 		if className == "" {
 			params.classificationIDs = append(params.classificationIDs, 0)
-		} else {
-			params.classificationIDs = append(params.classificationIDs, tl.classifications[className])
+			continue
 		}
+		// look the name up (and cache it) rather than reading the cache directly: on a freshly
+		// opened repo the cache is empty until an import touches a class, which made every
+		// classification filter silently match nothing
+		id, err := tl.classificationNameToID(className)
+		if err != nil {
+			Log.Warn("unknown classification in search", zap.String("classification", className), zap.Error(err))
+		}
+		params.classificationIDs = append(params.classificationIDs, id)
 	}
-	tl.cachesMu.RUnlock()
 }
 
 func (tl *Timeline) prepareSearchQuery(ctx context.Context, params ItemSearchParams) (string, []any, error) {

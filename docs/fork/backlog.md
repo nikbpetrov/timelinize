@@ -33,6 +33,7 @@ Fixed on the fork: #1 (direct read in `fillItem`), #2, #4 (counters/verify make 
 | 12 | Place names/addresses in posts, tagged places and check-ins skipped `FixString` -> mojibake place entities (8 in dev) | `datasources/facebook/archive.go` | **fixed** |
 | 13 | FB post `external_context` attachments become `ClassLocation` items (upstream oddity); attachments with the same timestamp and empty name merge under the unique constraints | `archive.go` ~L258 | documented in `verify-import.py`; not changed |
 | 14 | Share-only DMs are empty `message` roots (kept by the pipeline because of their edges); the UI shows an empty bubble with the bookmark as attachment | `messages.go` | by design for now; frontend card is the follow-up |
+| 16 | **Search `classification` filter silently matched nothing on a freshly opened repo**: `convertNamesToIDs` read the name->ID cache directly, which is only warmed by imports; every classification filter (UI or API) returned 0 rows until an import touched that class | `timeline/search.go` | **fixed** (uses `classificationNameToID`, which queries + caches) |
 | 15 | `evict` while a thumbnails job runs restores the files it reads (local = cache); the job framework has no ordering | `timeline/immich.go` | documented; run evict after thumbnails |
 
 ## Dev filters (added on fork)

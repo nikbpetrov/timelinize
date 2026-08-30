@@ -56,3 +56,10 @@ reels) / message 26 (8 share-only, no data) / bookmark 8; facebook message 29 / 
               "api_key_file": "/root/.config/timelinize/immich.key", "album": "Timelinize" } }
 ```
 The main server (:12002) does not have these yet — add the same two keys to `~/.config/timelinize/config.json` when ready.
+
+## Inspecting what the UI renders (API = CLI)
+```
+timelinize search-items --repo <id> --classification[0] bookmark --flat true --related 1 --limit 20   # attachments need --flat
+timelinize search-items --repo <id> --classification[0] message --data_source[0] instagram --related 1 # what the conversation view gets
+timelinize search-items --repo <id> --row_id[0] 52 --related 1                                       # one item with its edges
+```
