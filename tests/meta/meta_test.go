@@ -118,6 +118,7 @@ type where struct {
 	HasText          *bool          `json:"has_text"`
 	HasFile          *bool          `json:"has_file"`
 	IsRoot           *bool          `json:"is_root"`
+	HasLocation      *bool          `json:"has_location"` // items.latitude set
 	DataTextContains string         `json:"data_text_contains"`
 	DataFile         string         `json:"data_file"` // suffix
 	DataFileContains string         `json:"data_file_contains"`
@@ -216,6 +217,13 @@ func (r *repo) items(source string, w where) ([]item, error) {
 	if w.Classification != "" {
 		q += " AND c.name = ?"
 		args = append(args, w.Classification)
+	}
+	if w.HasLocation != nil {
+		if *w.HasLocation {
+			q += " AND i.latitude IS NOT NULL"
+		} else {
+			q += " AND i.latitude IS NULL"
+		}
 	}
 	q += " ORDER BY i.id"
 	rows, err := r.db.Query(q, args...)

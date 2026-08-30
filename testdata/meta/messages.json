@@ -193,9 +193,8 @@
       "id": "ig-msg-pseudo-reaction",
       "source": "instagram",
       "entity": "message",
-      "subtype": "reaction written as a standalone 'Reacted X to your message' message",
+      "subtype": "reaction written as a standalone 'Reacted X to your message' message — dropped, reaction kept on the target",
       "why": "Instagram stores the counterpart's reaction to your message twice: reactions[] on your message and a prose pseudo-message from them. Currently imported as a real message (1,031 in the full export).",
-      "known_issue": "pseudo-message duplicates the reacted edge; should be dropped (optionally keeping its timestamp on the edge)",
       "select": {
         "messages": [
           {
@@ -213,10 +212,7 @@
             "where": {
               "ts": 1706981744029
             },
-            "count": 1,
-            "classification": "message",
-            "data_text": "Reacted 😂 to your message",
-            "owner": "Станислав Рангелов"
+            "count": 0
           },
           {
             "where": {
@@ -251,7 +247,6 @@
       "source": "instagram",
       "entity": "message",
       "subtype": "'Liked a message' pseudo-message (heart reaction)",
-      "known_issue": "same duplication as ig-msg-pseudo-reaction",
       "select": {
         "messages": [
           {
@@ -268,9 +263,7 @@
             "where": {
               "ts": 1761504616244
             },
-            "count": 1,
-            "classification": "message",
-            "data_text": "Liked a message"
+            "count": 0
           }
         ]
       }
@@ -692,8 +685,7 @@
       "id": "ig-msg-call",
       "source": "instagram",
       "entity": "message",
-      "subtype": "video call record (call_duration)",
-      "known_issue": "call_duration is ignored; imported as the text 'Video chat ended'",
+      "subtype": "video call record (call_duration): Instagram wording 'Video chat ended'",
       "select": {
         "messages": [
           {
@@ -712,7 +704,10 @@
             },
             "count": 1,
             "classification": "message",
-            "data_text": "Video chat ended"
+            "data_text": "Video chat ended",
+            "metadata": {
+              "Kind": "call"
+            }
           }
         ]
       }
@@ -926,8 +921,7 @@
       "id": "fb-msg-ip-key",
       "source": "facebook",
       "entity": "message",
-      "subtype": "message carrying an 'ip' field (13k in export)",
-      "known_issue": "the ip field is ignored; empty-content messages with only ip produce no item",
+      "subtype": "message carrying an 'ip' field but no content: nothing to import (ip is kept as metadata on messages that have content, see fb-msg-ip-metadata)",
       "select": {
         "messages": [
           {
@@ -995,8 +989,7 @@
       "id": "fb-msg-call",
       "source": "facebook",
       "entity": "message",
-      "subtype": "call record ('You called Lora.' + call_duration)",
-      "known_issue": "call_duration ignored",
+      "subtype": "call record ('You called Lora.' + call_duration): Kind call, Direction, Duration, Timespan",
       "select": {
         "messages": [
           {
@@ -1015,7 +1008,15 @@
             },
             "count": 1,
             "classification": "message",
-            "data_text": "You called Lora."
+            "data_text": "You called Lora.",
+            "metadata": {
+              "Kind": "call",
+              "Direction": "outgoing",
+              "Missed": "false"
+            },
+            "metadata_has": [
+              "Duration"
+            ]
           }
         ]
       }
@@ -1043,7 +1044,12 @@
             },
             "count": 1,
             "classification": "message",
-            "data_text_contains": "missed a call"
+            "data_text_contains": "missed a call",
+            "metadata": {
+              "Kind": "call",
+              "Missed": "true",
+              "Direction": "incoming"
+            }
           }
         ]
       }
@@ -1186,8 +1192,7 @@
       "id": "fb-msg-location-share",
       "source": "facebook",
       "entity": "message",
-      "subtype": "'Lora sent a location.' with a Bing maps link",
-      "known_issue": "no coordinates extracted; text + external bookmark",
+      "subtype": "'Lora sent a location.' with a Bing maps link: Kind location, no bookmark",
       "select": {
         "messages": [
           {
@@ -1205,8 +1210,20 @@
               "ts": 1721379577626,
               "classification": "bookmark"
             },
+            "count": 0
+          },
+          {
+            "where": {
+              "ts": 1721379577626,
+              "classification": "message"
+            },
             "count": 1,
-            "data_text_contains": "bing.com"
+            "metadata": {
+              "Kind": "location"
+            },
+            "edges_out_count": {
+              "attachment": 0
+            }
           }
         ]
       }
@@ -1274,8 +1291,7 @@
       "id": "fb-msg-file",
       "source": "facebook",
       "entity": "message",
-      "subtype": "files[] attachment (pdf)",
-      "known_issue": "files[] is not imported at all (549 in export)",
+      "subtype": "files[] attachment (pdf) — a document item at the file's creation_timestamp, sent like a message",
       "select": {
         "messages": [
           {
@@ -1290,9 +1306,18 @@
         "items": [
           {
             "where": {
-              "ts": 1718350113416
+              "data_file": "2714407565384403.pdf"
             },
-            "count": 0
+            "count": 1,
+            "classification": "document",
+            "data_type_prefix": "application/pdf",
+            "owner": "Nikolay Petrov",
+            "edges_out": [
+              {
+                "label": "sent",
+                "to_entity": "Lora Gerova"
+              }
+            ]
           }
         ]
       }
@@ -1328,7 +1353,6 @@
       "source": "facebook",
       "entity": "message",
       "subtype": "'Reacted X to your message' also exists in Messenger (rare: 28)",
-      "known_issue": "same as ig-msg-pseudo-reaction",
       "select": {
         "messages": [
           {
@@ -1345,9 +1369,7 @@
             "where": {
               "ts": 1658750964869
             },
-            "count": 1,
-            "classification": "message",
-            "data_text": "Reacted 😆 to your message"
+            "count": 0
           }
         ]
       }
@@ -1876,6 +1898,705 @@
           }
         ]
       }
+    },
+    {
+      "id": "fb-msg-call-incoming",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "call: 'X called you.' with duration",
+      "select": {
+        "messages": [
+          {
+            "thread": "e2ee_cutover/btabov_8344687108943625",
+            "ts": [
+              1730378491874
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1730378491874
+            },
+            "count": 1,
+            "metadata": {
+              "Kind": "call",
+              "Direction": "incoming",
+              "Duration": "384",
+              "Missed": "false"
+            },
+            "timespan": 1730378875874
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-msg-call-missed-text-only",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "call: 'X missed your call.' with duration 0 and no missed flag",
+      "select": {
+        "messages": [
+          {
+            "thread": "e2ee_cutover/angelfilipovski_5681547291885293",
+            "ts": [
+              1629904649951,
+              1629906333080
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1629904649951
+            },
+            "count": 1,
+            "metadata": {
+              "Kind": "call",
+              "Direction": "outgoing",
+              "Missed": "true"
+            }
+          },
+          {
+            "where": {
+              "ts": 1629906333080
+            },
+            "count": 1,
+            "metadata": {
+              "Kind": "call",
+              "Direction": "outgoing",
+              "Duration": "18"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-msg-call-group-ended",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "call: 'The video call ended.' in a group (duration, no direction)",
+      "select": {
+        "messages": [
+          {
+            "thread": "inbox/philipstefanov_1346340945382072",
+            "ts": [
+              1481046631493
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1481046631493
+            },
+            "count": 1,
+            "metadata": {
+              "Kind": "call",
+              "Direction": "group",
+              "Video": "true",
+              "Duration": "606"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-msg-call-missed-video",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "call: 'You missed a video call with X.'",
+      "select": {
+        "messages": [
+          {
+            "thread": "inbox/ellytemelakieva_5030036020385661",
+            "ts": [
+              1653236016921
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1653236016921
+            },
+            "count": 1,
+            "metadata": {
+              "Kind": "call",
+              "Missed": "true",
+              "Video": "true",
+              "Direction": "incoming"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-msg-call-joined",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "call event: 'You joined the call.' (no duration) — system",
+      "select": {
+        "messages": [
+          {
+            "thread": "inbox/martoandb_8963260633730302",
+            "ts": [
+              1731944016489
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1731944016489
+            },
+            "count": 1,
+            "metadata": {
+              "Kind": "system",
+              "Event": "call_joined"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-msg-group-event-added",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "group event: 'A contact added X and 3 others to the group.'",
+      "select": {
+        "messages": [
+          {
+            "thread": "filtered_threads/carlosmacauleyadamand25others_6016494128430852",
+            "ts": [
+              1681309163294,
+              1678139166085
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1681309163294
+            },
+            "count": 1,
+            "metadata": {
+              "Kind": "system",
+              "Event": "member_added",
+              "Subject": "Alhaji M Juli Badawa and 3 others"
+            }
+          },
+          {
+            "where": {
+              "ts": 1678139166085
+            },
+            "count": 1,
+            "metadata": {
+              "Kind": "system",
+              "Event": "created"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-msg-group-event-left",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "group event: 'You left the group.'",
+      "select": {
+        "messages": [
+          {
+            "thread": "archived_threads/petrovelicaandnikolai_1374302319496217",
+            "ts": [
+              1388529562042
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1388529562042
+            },
+            "count": 1,
+            "owner": "Nikolay Petrov",
+            "metadata": {
+              "Kind": "system",
+              "Event": "member_left"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-msg-group-event-removed",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "group event: 'X removed you from the group.'",
+      "select": {
+        "messages": [
+          {
+            "thread": "inbox/marsmaleassociationforresponsiblesalseros_4523148781082445",
+            "ts": [
+              1629775908864
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1629775908864
+            },
+            "count": 1,
+            "metadata": {
+              "Kind": "system",
+              "Event": "member_removed",
+              "Subject": "you"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-msg-group-event-photo",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "group event: 'X changed the group photo.'",
+      "select": {
+        "messages": [
+          {
+            "thread": "archived_threads/trell2beds2bathsroomonly_7479479792160399",
+            "ts": [
+              1718128186148
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1718128186148
+            },
+            "count": 1,
+            "metadata": {
+              "Kind": "system",
+              "Event": "photo_changed"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-msg-thread-event-nickname-dropped",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "thread event: nickname set — dropped",
+      "select": {
+        "messages": [
+          {
+            "thread": "inbox/kizomba2023_5694350780693835",
+            "ts": [
+              1679163475164
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1679163475164
+            },
+            "count": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-msg-thread-event-theme-dropped",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "thread event: theme changed — dropped",
+      "select": {
+        "messages": [
+          {
+            "thread": "inbox/vladibirthday_6377458005684511",
+            "ts": [
+              1692699476261
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1692699476261
+            },
+            "count": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-msg-thread-event-connected-dropped",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "system: 'You are now connected on Messenger' — dropped (thread with an unnamed participant)",
+      "select": {
+        "messages": [
+          {
+            "thread": "inbox/1157564424322632",
+            "ts": [
+              1476957828320
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1476957828320
+            },
+            "count": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-msg-thread-event-wave-dropped",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "'You waved at a contact!' — dropped",
+      "select": {
+        "messages": [
+          {
+            "thread": "inbox/1541247412620996",
+            "ts": [
+              1510500753578
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1510500753578
+            },
+            "count": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-msg-location-coords",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "'You sent a location.' with lat,lon in the Bing link → coordinates on the message",
+      "select": {
+        "messages": [
+          {
+            "thread": "inbox/marleneforsterling_3431471163598602",
+            "ts": [
+              1621173776437
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1621173776437,
+              "has_location": true
+            },
+            "count": 1,
+            "metadata": {
+              "Kind": "location"
+            },
+            "edges_out_count": {
+              "attachment": 0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-msg-location-address",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "'X sent a location.' with an address (share_text) → Address metadata",
+      "select": {
+        "messages": [
+          {
+            "thread": "inbox/aleksanderpetrov_4791607894193038",
+            "ts": [
+              1660296160444
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1660296160444,
+              "has_location": false
+            },
+            "count": 1,
+            "metadata": {
+              "Kind": "location"
+            },
+            "metadata_has": [
+              "Address"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-msg-unsent-with-content",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "is_unsent with content ('This poll is no longer available.') — dropped",
+      "select": {
+        "messages": [
+          {
+            "thread": "inbox/bachataloverssofiachat_6338047269546821",
+            "ts": [
+              1714857435140
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1714857435140
+            },
+            "count": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-msg-bare-url",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "message that is exactly one URL: text kept and a bookmark attached",
+      "select": {
+        "messages": [
+          {
+            "thread": "e2ee_cutover/kalinkrastev_10225679772972576",
+            "ts": [
+              1670147040403
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1670147040403,
+              "classification": "message"
+            },
+            "count": 1,
+            "data_text_contains": "youtube.com",
+            "edges_out": [
+              {
+                "label": "attachment",
+                "to_item": {
+                  "classification": "bookmark",
+                  "data_text_contains": "youtube.com"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-msg-share-text-only",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "share with share_text and no link ('sent a live location.') — location kind, address from share_text",
+      "select": {
+        "messages": [
+          {
+            "thread": "inbox/vladimirdimitrov_10228120463780071",
+            "ts": [
+              1637583471797
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1637583471797,
+              "classification": "message"
+            },
+            "count": 1,
+            "metadata": {
+              "Kind": "location"
+            },
+            "edges_out_count": {
+              "attachment": 0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-msg-file-docx",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "files[] attachment (docx) — document item with data",
+      "select": {
+        "messages": [
+          {
+            "thread": "inbox/paoloadamo_2532883643402322",
+            "ts": [
+              1579263424487
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "data_file": "766363717107352.docx"
+            },
+            "count": 1,
+            "classification": "document",
+            "owner": "Paolo Adamo"
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-msg-attachment-missing",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "photo attachment whose uri is a bare filename (not in the archive): no data-less item, 'Missing attachments' metadata",
+      "select": {
+        "messages": [
+          {
+            "thread": "inbox/nikolaynikolov_1692241320807237",
+            "ts": [
+              1512506568913
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1512506568913,
+              "classification": "message"
+            },
+            "count": 1,
+            "metadata": {
+              "Missing attachments": "1"
+            },
+            "edges_out_count": {
+              "attachment": 0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-msg-attachment-expired-url",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "video attachment whose uri is an https fbcdn URL: bookmark with Status expired",
+      "select": {
+        "messages": [
+          {
+            "thread": "e2ee_cutover/marinaaneva_887455161333561",
+            "ts": [
+              1544731658122
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1544731658122,
+              "classification": "bookmark"
+            },
+            "count": 1,
+            "metadata": {
+              "Status": "expired",
+              "Kind": "media"
+            },
+            "data_text_contains": "fbcdn.net"
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-msg-ip-metadata",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "message with content and an 'ip' field → IP metadata (also a deleted-user thread)",
+      "select": {
+        "messages": [
+          {
+            "thread": "inbox/facebookuser_1542487619163642",
+            "ts": [
+              1406615720680
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1406615720680
+            },
+            "count": 1,
+            "owner": "Nikolay Petrov",
+            "metadata_has": [
+              "IP"
+            ],
+            "edges_out": [
+              {
+                "label": "sent",
+                "to_entity": "1542487619163642"
+              }
+            ]
+          }
+        ]
+      }
     }
   ],
   "checks": [
@@ -1929,6 +2650,11 @@
     {
       "id": "named-entities-never-anonymous-identity",
       "sql": "select count(*) from entities e join entity_attributes ea on ea.entity_id = e.id join attributes a on a.id = ea.attribute_id where a.name like '%_thread_user' and e.name not in ('Facebook user','Instagram user')",
+      "expect": 0
+    },
+    {
+      "id": "no-system-sentences-as-plain-messages",
+      "sql": "select count(*) from items i join classifications c on c.id=i.classification_id where c.name='message' and (i.data_text like '% added % to the group.' or i.data_text like '% left the group.' or i.data_text like '% named the group %' or i.data_text like 'Reacted % to your message%' or i.data_text like '% set the nickname for %' or i.data_text like '% sent an attachment.') and (i.metadata is null or json_extract(i.metadata,'$.Kind') is null)",
       "expect": 0
     }
   ]

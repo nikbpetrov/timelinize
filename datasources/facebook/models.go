@@ -321,27 +321,36 @@ type fbMessengerThread struct {
 	Participants []struct {
 		Name string `json:"name"`
 	} `json:"participants"`
-	Messages []struct {
-		SenderName  string  `json:"sender_name"`
-		TimestampMS int64   `json:"timestamp_ms"`
-		IsUnsent    bool    `json:"is_unsent,omitempty"`
-		Content     string  `json:"content,omitempty"`
-		Share       fbShare `json:"share,omitempty"`
-		Reactions   []struct {
-			Reaction string `json:"reaction"`
-			Actor    string `json:"actor"`
-		} `json:"reactions,omitempty"`
-		Photos     []fbArchiveMedia `json:"photos,omitempty"`
-		Videos     []fbArchiveMedia `json:"videos,omitempty"`
-		GIFs       []fbArchiveMedia `json:"gifs,omitempty"`
-		AudioFiles []fbArchiveMedia `json:"audio_files,omitempty"`
-		Sticker    fbArchiveMedia   `json:"sticker,omitempty"`
-	} `json:"messages"`
-	Title              string `json:"title"`
-	IsStillParticipant bool   `json:"is_still_participant"`
-	IsPending          bool   `json:"is_pending"` // message requests
-	ThreadPath         string `json:"thread_path"`
-	MagicWords         []any  `json:"magic_words"`
+	Messages           []fbMessage `json:"messages"`
+	Title              string      `json:"title"`
+	IsStillParticipant bool        `json:"is_still_participant"`
+	IsPending          bool        `json:"is_pending"` // message requests
+	ThreadPath         string      `json:"thread_path"`
+	MagicWords         []any       `json:"magic_words"`
+}
+
+// fbMessage is one message of a Messenger / Instagram DM thread (main export layout).
+// Which of these are set decides what the message is — see classify.go.
+type fbMessage struct {
+	SenderName  string  `json:"sender_name"`
+	TimestampMS int64   `json:"timestamp_ms"`
+	IsUnsent    bool    `json:"is_unsent,omitempty"`
+	IsTakenDown bool    `json:"is_taken_down,omitempty"`
+	Content     string  `json:"content,omitempty"`
+	Share       fbShare `json:"share,omitempty"`
+	Reactions   []struct {
+		Reaction string `json:"reaction"`
+		Actor    string `json:"actor"`
+	} `json:"reactions,omitempty"`
+	Photos       []fbArchiveMedia `json:"photos,omitempty"`
+	Videos       []fbArchiveMedia `json:"videos,omitempty"`
+	GIFs         []fbArchiveMedia `json:"gifs,omitempty"`
+	AudioFiles   []fbArchiveMedia `json:"audio_files,omitempty"`
+	Files        []fbArchiveMedia `json:"files,omitempty"` // documents (docx, pdf, …)
+	Sticker      fbArchiveMedia   `json:"sticker,omitempty"`
+	CallDuration *int64           `json:"call_duration,omitempty"` // seconds; present on call records
+	Missed       bool             `json:"missed,omitempty"`
+	IP           string           `json:"ip,omitempty"` // sender's IP on older messages
 }
 
 // sentTo returns the recipients of a message: every participant except the sender.

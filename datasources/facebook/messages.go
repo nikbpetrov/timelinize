@@ -49,7 +49,7 @@ func GetMessages(ctx context.Context, dsName string, dirEntry timeline.DirEntry,
 	threadMsgCounts := make(map[string]int)
 
 	// share-link statistics for the end-of-import summary
-	stats := shareStats{byKind: make(map[string]int)}
+	stats := shareStats{byKind: make(map[string]int), byMsgKind: make(map[string]int)}
 
 	// optional link resolver (downloads shared reels/posts with the user's cookies)
 	var resolver *linkfetch.Resolver
@@ -101,6 +101,7 @@ func GetMessages(ctx context.Context, dsName string, dirEntry timeline.DirEntry,
 				return err
 			}
 			threadMeta := thread.metadata(dsName, threadPath, mctx.OwnerName)
+			pseudo := collectPseudoReactions(thread.Messages)
 
 			for _, msg := range thread.Messages {
 				if filters.MaxMessagesPerConversation > 0 && threadMsgCounts[threadPath] >= filters.MaxMessagesPerConversation {
@@ -122,76 +123,32 @@ func GetMessages(ctx context.Context, dsName string, dirEntry timeline.DirEntry,
 				msgText := FixString(msg.Content)
 				msgTimestamp := time.UnixMilli(msg.TimestampMS).UTC()
 
-				// Meta substitutes "<Name> sent an attachment." for messages whose real
-				// content is the attachment or share; that is not something the sender typed
-				if isAttachmentPlaceholder(msgText) {
+				// what is this message? (call, group event, placeholder, link, ... — classify.go)
+				cls := classifyMessage(msg, msgText)
+				stats.byMsgKind[string(cls.Kind)]++
+				if cls.dropped() {
+					continue
+				}
+				if cls.Kind == kindPlaceholder {
+					// Meta substitutes "<Name> sent an attachment." for messages whose real
+					// content is the attachment or share; that is not something the sender typed
 					msgText = ""
 					stats.placeholdersDropped++
 				}
+				if cls.Kind == kindLink && msg.Share.isEmpty() {
+					// a message that is exactly one URL: the text stays, and the URL gets the
+					// same bookmark treatment as a share
+					msg.Share.Link = cls.URL
+				}
 
-				var attachments []*timeline.Item
+				attachments, expiredLinks, missing := messageAttachments(msg, sender, dirEntry, msgTimestamp, params.Log)
 
-				for _, photo := range msg.Photos {
-					attached := &timeline.Item{
-						Classification: timeline.ClassMessage,
-						Owner:          sender,
-					}
-					photo.fillItem(attached, dirEntry, "", params.Log)
-					if attached.Timestamp.IsZero() {
-						attached.Timestamp = msgTimestamp
-					}
-					attachments = append(attachments, attached)
-				}
-				for _, video := range msg.Videos {
-					attached := &timeline.Item{
-						Classification: timeline.ClassMessage,
-						Owner:          sender,
-					}
-					video.fillItem(attached, dirEntry, "", params.Log)
-					if attached.Timestamp.IsZero() {
-						attached.Timestamp = msgTimestamp
-					}
-					attachments = append(attachments, attached)
-				}
-				for _, gif := range msg.GIFs {
-					attached := &timeline.Item{
-						Classification: timeline.ClassMessage,
-						Owner:          sender,
-					}
-					gif.fillItem(attached, dirEntry, "", params.Log)
-					if attached.Timestamp.IsZero() {
-						attached.Timestamp = msgTimestamp
-					}
-					attachments = append(attachments, attached)
-				}
-				for _, audio := range msg.AudioFiles {
-					attached := &timeline.Item{
-						Classification: timeline.ClassMessage,
-						Owner:          sender,
-					}
-					audio.fillItem(attached, dirEntry, "", params.Log)
-					if attached.Timestamp.IsZero() {
-						attached.Timestamp = msgTimestamp
-					}
-					attachments = append(attachments, attached)
-				}
-				if msg.Sticker.URI != "" {
-					attached := &timeline.Item{
-						Classification: timeline.ClassMessage,
-						Owner:          sender,
-					}
-					msg.Sticker.fillItem(attached, dirEntry, "", params.Log)
-					if attached.Timestamp.IsZero() {
-						attached.Timestamp = msgTimestamp
-					}
-					attachments = append(attachments, attached)
-				}
 				// A shared post/reel/story/profile becomes its own bookmark item attached to the
 				// message (or, for the owner's own story, a "quotes" edge to the imported story),
 				// never text on the message: share_text is the *other* author's caption.
 				var bookmark, quoted *timeline.Item
 				var fetchedMedia []*timeline.Item
-				if !msg.Share.isEmpty() {
+				if !msg.Share.isEmpty() && cls.Kind != kindLocation {
 					canonical := canonicalShareURL(msg.Share.url(dsName))
 					kind := classifyShareURL(canonical)
 					status := shareStatusUnresolved
@@ -255,7 +212,7 @@ func GetMessages(ctx context.Context, dsName string, dirEntry timeline.DirEntry,
 					}
 				case len(attachments) > 0:
 					item, attachments = attachments[0], attachments[1:]
-				case bookmark != nil || quoted != nil:
+				case bookmark != nil || quoted != nil || len(expiredLinks) > 0:
 					// the message consists solely of a share: represent it as an empty message
 					// (kept by the pipeline because it has relationships) so it still shows up
 					// in the conversation at the right time, owned by the sender
@@ -270,19 +227,27 @@ func GetMessages(ctx context.Context, dsName string, dirEntry timeline.DirEntry,
 					continue
 				}
 
-				if len(threadMeta) > 0 {
-					if item.Metadata == nil {
-						item.Metadata = make(timeline.Metadata)
-					}
-					for k, v := range threadMeta {
-						item.Metadata[k] = v
-					}
+				if item.Metadata == nil {
+					item.Metadata = make(timeline.Metadata)
+				}
+				for k, v := range threadMeta {
+					item.Metadata[k] = v
+				}
+				cls.annotate(item, msgTimestamp)
+				if msg.IP != "" {
+					item.Metadata["IP"] = msg.IP
+				}
+				if missing > 0 {
+					item.Metadata["Missing attachments"] = missing
 				}
 
 				ig := &timeline.Graph{Item: item}
 
 				for _, attach := range attachments {
 					ig.ToItem(timeline.RelAttachment, attach)
+				}
+				for _, expired := range expiredLinks {
+					ig.ToItem(timeline.RelAttachment, expired)
 				}
 				if bookmark != nil {
 					bg := &timeline.Graph{Item: bookmark}
@@ -300,6 +265,11 @@ func GetMessages(ctx context.Context, dsName string, dirEntry timeline.DirEntry,
 				for _, reaction := range msg.Reactions {
 					actor := participantEntity(dsName, FixString(reaction.Actor), threadPath)
 					ig.FromEntityWithValue(&actor, timeline.RelReacted, FixString(reaction.Reaction))
+					// the export also emits a "Reacted X to your message" pseudo-message from the
+					// actor (dropped above); its timestamp is when the reaction happened
+					if t, ok := pseudo.timeOf(FixString(reaction.Actor), msg.TimestampMS); ok {
+						ig.Edges[len(ig.Edges)-1].Start = &t
+					}
 				}
 
 				params.Pipeline <- ig
@@ -315,6 +285,7 @@ func GetMessages(ctx context.Context, dsName string, dirEntry timeline.DirEntry,
 
 	summary := []zap.Field{
 		zap.String("data_source", dsName),
+		zap.Any("by_message_kind", stats.byMsgKind),
 		zap.Any("by_kind", stats.byKind),
 		zap.Int("placeholders_dropped", stats.placeholdersDropped),
 		zap.Int("own_stories_matched", stats.ownStoriesMatched),
@@ -328,7 +299,127 @@ func GetMessages(ctx context.Context, dsName string, dirEntry timeline.DirEntry,
 }
 
 type shareStats struct {
+	byMsgKind           map[string]int
 	byKind              map[string]int
 	placeholdersDropped int
 	ownStoriesMatched   int
+}
+
+// messageAttachments builds the attachment items of a message: photos, videos, gifs, audio,
+// files (documents) and the sticker. Attachments whose file is not in the archive are not
+// items: a bare filename (2017 threads) is counted as missing, an https CDN URL (expired)
+// becomes a bookmark with Status expired so the URL survives.
+func messageAttachments(msg fbMessage, sender timeline.Entity, dirEntry timeline.DirEntry, msgTimestamp time.Time, logger *zap.Logger) (attachments, expired []*timeline.Item, missing int) {
+	add := func(media fbArchiveMedia, class timeline.Classification) {
+		if media.URI == "" || !strings.Contains(media.URI, "/") {
+			missing++ // 2017 threads: bare filename or empty uri, the file is not in the archive
+			return
+		}
+		if strings.HasPrefix(media.URI, "http://") || strings.HasPrefix(media.URI, "https://") {
+			expired = append(expired, &timeline.Item{
+				ID:             media.URI,
+				Classification: timeline.ClassBookmark,
+				Timestamp:      msgTimestamp,
+				Owner:          sender,
+				Content:        timeline.ItemData{Data: timeline.StringData(media.URI)},
+				Metadata: timeline.Metadata{
+					"URL":    media.URI,
+					"Kind":   "media",
+					"Status": shareStatusExpired,
+				},
+			})
+			return
+		}
+		if info, err := fs.Stat(dirEntry.FS, media.URI); err != nil || info.IsDir() {
+			missing++
+			return
+		}
+		attached := &timeline.Item{
+			Classification: class,
+			Owner:          sender,
+		}
+		media.fillItem(attached, dirEntry, "", logger)
+		if attached.Timestamp.IsZero() {
+			attached.Timestamp = msgTimestamp
+		}
+		attachments = append(attachments, attached)
+	}
+	for _, m := range msg.Photos {
+		add(m, timeline.ClassMessage)
+	}
+	for _, m := range msg.Videos {
+		add(m, timeline.ClassMessage)
+	}
+	for _, m := range msg.GIFs {
+		add(m, timeline.ClassMessage)
+	}
+	for _, m := range msg.AudioFiles {
+		add(m, timeline.ClassMessage)
+	}
+	for _, m := range msg.Files {
+		add(m, timeline.ClassDocument)
+	}
+	if msg.Sticker.URI != "" {
+		add(msg.Sticker, timeline.ClassMessage)
+	}
+	return attachments, expired, missing
+}
+
+// annotate writes what the classifier found onto the message item.
+func (c classified) annotate(item *timeline.Item, msgTimestamp time.Time) {
+	switch c.Kind {
+	case kindCall:
+		item.Metadata["Kind"] = "call"
+		item.Metadata["Direction"] = c.Direction
+		item.Metadata["Duration"] = c.Duration
+		item.Metadata["Missed"] = c.Missed
+		item.Metadata["Video"] = c.Video
+		if c.Duration > 0 {
+			item.Timespan = msgTimestamp.Add(time.Duration(c.Duration) * time.Second)
+		}
+	case kindGroupEvent, kindCallEvent:
+		item.Metadata["Kind"] = "system"
+		item.Metadata["Event"] = c.Event
+		if c.Subject != "" {
+			item.Metadata["Subject"] = c.Subject
+		}
+	case kindLocation:
+		item.Metadata["Kind"] = "location"
+		if c.Latitude != nil && c.Longitude != nil {
+			item.Location.Latitude = c.Latitude
+			item.Location.Longitude = c.Longitude
+		}
+		if c.Address != "" {
+			item.Metadata["Address"] = c.Address
+		}
+	}
+}
+
+// pseudoReactions remembers, per actor, when the export's "Reacted X to your message"
+// pseudo-messages were sent, so the real reaction edge can carry that time.
+type pseudoReactions map[string][]int64
+
+func collectPseudoReactions(msgs []fbMessage) pseudoReactions {
+	p := make(pseudoReactions)
+	for _, m := range msgs {
+		if pseudoReactionRegex.MatchString(strings.TrimSpace(FixString(m.Content))) {
+			actor := FixString(m.SenderName)
+			p[actor] = append(p[actor], m.TimestampMS)
+		}
+	}
+	return p
+}
+
+// timeOf returns the earliest pseudo-reaction by actor after a message sent at ts.
+func (p pseudoReactions) timeOf(actor string, ts int64) (time.Time, bool) {
+	var best int64
+	for _, t := range p[actor] {
+		if t > ts && (best == 0 || t < best) {
+			best = t
+		}
+	}
+	if best == 0 {
+		return time.Time{}, false
+	}
+	return time.UnixMilli(best).UTC(), true
 }
