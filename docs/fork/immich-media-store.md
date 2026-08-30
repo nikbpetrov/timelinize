@@ -1,6 +1,34 @@
 # Immich as the media store for Timelinize
 
-Status: **design + API trial complete, no code yet** (2026-08-30). Server: Immich **v3.1.0**.
+Status: **implemented and verified on the dev repo** (2026-08-30). Server: Immich **v3.1.0**.
+
+## Implementation (fork)
+- `internal/immich/client.go` — thin client: version, permissions, `bulk-upload-check`, multipart upload (with
+  `x-immich-checksum`, `visibility`, custom `metadata`), get/update asset, original download, album/tag upsert+membership.
+- `timeline/immich.go` — `ImmichOptions` (config), `tl.SetImmich`, the `immich` **job** (`JobTypeImmich`), `EnsureDataFile`
+  (restore on read), `ImmichStatus`, `CreateImmichJob`. Schema: table `immich_assets` (`timeline/schema.sql`).
+- App: `config.json` `"immich": {"enabled", "url", "api_key_file"|"api_key", "album", "tag_prefix", "visibility",
+  "upload_after_import" (default true), "evict_after_upload" (default false)}`; applied to every opened repo
+  (`tlzapp/bindings.go` openRepository). Endpoints/CLI: `immich-status --repo <id>`,
+  `immich-sync --repo <id> [--import_job_id N] [--evict true]`.
+- Flow: after each import a child job uploads that import's image/video files (distinct by `data_hash`): SHA-1 ->
+  `bulk-upload-check` -> upload (`filename tlz-<source>-<name>`, `fileCreatedAt` = item timestamp, `visibility=archive`,
+  metadata `timelinize{repo,item_id,data_source,data_file,data_hash}`) -> album "Timelinize" -> tag
+  `timelinize/<source>` -> row in `immich_assets`. `--evict` deletes the local copy only after `GET /assets/{id}` confirms
+  the asset is not trashed/offline; `evicted` is recorded.
+- Read path: `tl.EnsureDataFile(ctx, data_file)` is called before every local open (data serving, transcode,
+  motion photo, download, thumbnails, embeddings, dedup integrity check). Missing file + mapped asset => download
+  `/original` to the same path, verify BLAKE3 against `items.data_hash`, clear `evicted`. `immich://` refs were not
+  needed: `items.data_file` keeps the local path, the table maps `data_hash -> asset_id`.
+- Logging: logger `job.action.immich` per asset `{item_id, data_file, asset_id, status, bytes, duration}`, summary
+  `{outcomes: {created, duplicate, already_uploaded, evicted, error…}, bytes_uploaded}`; restores under `immich`.
+- Verified on dev (36 files): upload 4.8 s total, `immich-status` = 36/36 mapped, album count 36 after fixing the 3
+  trial assets (`visibility=archive`, correct dates via `PUT /api/assets/{id}`), evict all -> `GET /repo/<id>/data/...`
+  restores the file byte-identical in 0.19 s.
+- Behaviours worth knowing: (1) **duplicates keep their visibility/dates** — if the same bytes already exist in the
+  user's real timeline, we must not archive or re-date them; only assets we create are archived. (2) A thumbnails job
+  running concurrently with `--evict` restores files as it reads them (local = cache, so harmless); run evict after
+  thumbnails finish. (3) Immich never generated thumbnails for our uploads in the trial — irrelevant, we keep our own.
 
 ## Goal
 Photos and videos are stored **once**, in Immich. Timelinize keeps the index (items, entities, relationships,
@@ -78,7 +106,7 @@ If Immich is unreachable: fall back to `local` for that item, log at WARN, mark 
 | Thumbnails | `GET /api/assets/{id}/thumbnail?size=thumbnail|preview` | **404 "Asset media not found"** for all trial assets, `thumbhash` null after >5 min; `size=fullsize` -> 302 to original |
 | Update / delete | `PUT /api/assets/{id}`, `PUT /api/assets`, `DELETE /api/assets` | 403 without `asset.update` / `asset.delete` |
 
-## Trial assets (still in Immich, hidden, in album "Timelinize")
+## Trial assets (fixed 2026-08-30: now `archive`, correct dates; mapped as "duplicate" by the dev import)
 | asset | file | date sent in trial (wrong) | correct item timestamp |
 |---|---|---|---|
 | `eced74ac-3119-43d3-8e5a-80aca813e775` | `tlz-test-17921339444066458.jpg` | 2026-08-29 (file mtime) | 2021-11-21T16:42:11Z (dev item 28) |

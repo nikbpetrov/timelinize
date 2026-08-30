@@ -519,6 +519,9 @@ func (task thumbnailTask) generateAndStoreThumbnail(ctx context.Context) (Thumbn
 	var inputFilename string
 
 	if task.DataFile != "" {
+		if err := task.tl.EnsureDataFile(ctx, task.DataFile); err != nil {
+			return Thumbnail{}, err
+		}
 		inputFilename = task.tl.FullPath(task.DataFile)
 	} else if task.DataID > 0 {
 		err := task.tl.db.ReadPool.QueryRowContext(ctx,

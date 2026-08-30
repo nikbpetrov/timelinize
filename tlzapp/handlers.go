@@ -510,3 +510,25 @@ var wsUpgrader = websocket.Upgrader{
 	WriteBufferSize: 1024,
 	CheckOrigin:     func(_ *http.Request) bool { return true }, // we check Origin earlier
 }
+
+type immichStatusPayload struct {
+	Repo string `json:"repo"`
+}
+
+func (s *server) handleImmichStatus(w http.ResponseWriter, r *http.Request) error {
+	payload := r.Context().Value(ctxKeyPayload).(*immichStatusPayload)
+	st, err := s.app.ImmichStatus(payload.Repo)
+	return jsonResponse(w, st, err)
+}
+
+type immichSyncPayload struct {
+	Repo        string `json:"repo"`
+	ImportJobID uint64 `json:"import_job_id,omitempty"`
+	Evict       bool   `json:"evict,omitempty"`
+}
+
+func (s *server) handleImmichSync(w http.ResponseWriter, r *http.Request) error {
+	payload := r.Context().Value(ctxKeyPayload).(*immichSyncPayload)
+	jobID, err := s.app.ImmichSync(payload.Repo, payload.ImportJobID, payload.Evict)
+	return jsonResponse(w, map[string]uint64{"job_id": jobID}, err)
+}

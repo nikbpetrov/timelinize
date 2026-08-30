@@ -60,6 +60,8 @@ func (tl *Timeline) CreateJob(action JobAction, scheduled time.Time, repeat time
 		jobType = JobTypeThumbnails
 	case embeddingJob:
 		jobType = JobTypeEmbeddings
+	case immichJob:
+		jobType = JobTypeImmich
 	default:
 		return 0, fmt.Errorf("unexpected job action: %#v", action)
 	}
@@ -288,12 +290,17 @@ func (tl *Timeline) startJob(ctx context.Context, tx *sql.Tx, jobID uint64) erro
 	}
 
 	start := func(tx *sql.Tx) error {
-		// update the job's state to started
+		// update the job's state to started -- conditionally, so that two callers racing to
+		// start the same job (e.g. the scheduled-start timer and the post-job dequeue) cannot
+		// both run it: deferred SQLite transactions let both read the old "queued" state
 		now := time.Now()
-		_, err = tx.ExecContext(ctx, `UPDATE jobs SET state=?, start=?, updated=? WHERE id=?`, // TODO: LIMIT 1
-			JobStarted, now.UnixMilli(), now.UnixMilli(), jobID)
+		res, err := tx.ExecContext(ctx, `UPDATE jobs SET state=?, start=?, updated=? WHERE id=? AND state IN (?, ?, ?)`, // TODO: LIMIT 1
+			JobStarted, now.UnixMilli(), now.UnixMilli(), jobID, JobQueued, JobInterrupted, JobPaused)
 		if err != nil {
 			return fmt.Errorf("updating job state: %w", err)
+		}
+		if n, err := res.RowsAffected(); err == nil && n == 0 {
+			return fmt.Errorf("job %d was already started by someone else", jobID)
 		}
 		job.State = JobStarted
 		job.Start = &now
@@ -328,11 +335,17 @@ func (tl *Timeline) startJob(ctx context.Context, tx *sql.Tx, jobID uint64) erro
 				}
 				defer tx.Rollback()
 
-				// ensure job was not aborted while we were waiting for it to start
-				var unabortedJobCount int
-				err = tx.QueryRowContext(ctx, `SELECT count() FROM jobs WHERE id=? AND state!=? LIMIT 1`, jobID, JobAborted).Scan(&unabortedJobCount)
-				if errors.Is(err, sql.ErrNoRows) || unabortedJobCount == 0 {
+				// ensure job is still waiting to be started (it may have been aborted, or
+				// already started by the post-job dequeue) while we were waiting
+				var state JobState
+				err = tx.QueryRowContext(ctx, `SELECT state FROM jobs WHERE id=? LIMIT 1`, jobID).Scan(&state)
+				if errors.Is(err, sql.ErrNoRows) || state == JobAborted {
 					logger.Error("job was aborted before it started")
+					return
+				}
+				if state != JobQueued {
+					logger.Info("scheduled job was already started elsewhere; not starting it again",
+						zap.Uint64("job_id", jobID), zap.String("state", string(state)))
 					return
 				}
 
@@ -381,6 +394,12 @@ func (tl *Timeline) runJob(row Job) error {
 			return fmt.Errorf("unmarshaling embedding job config: %w", err)
 		}
 		action = embeddingJob
+	case JobTypeImmich:
+		var ij immichJob
+		if err := json.Unmarshal([]byte(row.Config), &ij); err != nil {
+			return fmt.Errorf("unmarshaling immich job config: %w", err)
+		}
+		action = ij
 	default:
 		return fmt.Errorf("unknown job type '%s'", row.Type)
 	}
@@ -521,7 +540,13 @@ func (tl *Timeline) runJob(row Job) error {
 
 		if newState == JobSucceeded {
 			// clear message and checkpoint in the DB if job succeeds
-			job.Message("")
+			// (unless the job left a final summary message on purpose)
+			job.mu.Lock()
+			keep := job.keepMessage
+			job.mu.Unlock()
+			if !keep {
+				job.Message("")
+			}
 			if err = job.sync(tx, nil); err != nil {
 				logger.Error("clearing job checkpoint and message from successful job", zap.Error(err))
 			}
@@ -548,9 +573,10 @@ func (tl *Timeline) runJob(row Job) error {
 			`SELECT id
 			FROM jobs
 			WHERE (state=? OR state=?) AND (hostname=? OR type!=?)
+				AND (start IS NULL OR start <= ?)
 			ORDER BY start, created
 			LIMIT 1`,
-			JobQueued, JobInterrupted, hostname, JobTypeImport).Scan(&nextJobID)
+			JobQueued, JobInterrupted, hostname, JobTypeImport, time.Now().UnixMilli()).Scan(&nextJobID)
 		if nextJobID > 0 {
 			err := tl.startJob(tl.ctx, tx, nextJobID)
 			if err != nil {
@@ -596,6 +622,9 @@ type ActiveJob struct {
 	jobType JobType
 	started time.Time
 	ended   time.Time
+
+	// fork: if true, the current message is a final summary that must survive success
+	keepMessage bool
 
 	mu sync.Mutex
 
@@ -735,6 +764,16 @@ func (j *ActiveJob) flushProgress(logger *zap.Logger) {
 }
 
 // Message updates the current job message or status to show the user.
+// FinalMessage sets a summary message that is kept in the DB even after the
+// job succeeds (regular messages are cleared on success). Use it to persist
+// results such as import counts so they are visible via the jobs API.
+func (j *ActiveJob) FinalMessage(message string) {
+	j.mu.Lock()
+	j.keepMessage = true
+	j.mu.Unlock()
+	j.Message(message)
+}
+
 func (j *ActiveJob) Message(message string) {
 	j.mu.Lock()
 	if message == "" {
@@ -1193,6 +1232,7 @@ const (
 	JobTypeImport     JobType = "import"
 	JobTypeThumbnails JobType = "thumbnails"
 	JobTypeEmbeddings JobType = "embeddings"
+	JobTypeImmich     JobType = "immich" // fork: upload media to Immich
 )
 
 type JobState string

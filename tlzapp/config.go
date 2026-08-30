@@ -75,6 +75,9 @@ type Config struct {
 	// (used when an import job does not specify its own link_fetch options).
 	LinkFetch *timeline.LinkFetchOptions `json:"link_fetch,omitempty"`
 
+	// Immich as the canonical store for image/video data files (fork).
+	Immich *timeline.ImmichOptions `json:"immich,omitempty"`
+
 	log *zap.Logger
 }
 

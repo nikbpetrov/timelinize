@@ -174,6 +174,9 @@ func (s server) handleRepoResource(w http.ResponseWriter, r *http.Request) error
 	case "transcode":
 		// stream video data file in a format that can be played by the browser
 		dataFile := strings.Join(parts[4:], "/")
+		if err := tl.EnsureDataFile(r.Context(), dataFile); err != nil {
+			return Error{Err: err, HTTPStatus: http.StatusBadGateway, Log: "restoring data file from Immich", Message: "Media is stored in Immich and could not be fetched."}
+		}
 		inputPath := tl.FullPath(dataFile)
 		_, obfuscate := s.app.ObfuscationMode(tl.Timeline)
 		return s.transcodeVideo(r.Context(), w, inputPath, nil, obfuscate)
@@ -197,6 +200,9 @@ func (s server) handleRepoResource(w http.ResponseWriter, r *http.Request) error
 }
 
 func (s server) serveDataFile(w http.ResponseWriter, r *http.Request, tl openedTimeline, dataFile string) error {
+	if err := tl.EnsureDataFile(r.Context(), dataFile); err != nil {
+		return Error{Err: err, HTTPStatus: http.StatusBadGateway, Log: "restoring data file from Immich", Message: "Media is stored in Immich and could not be fetched."}
+	}
 	// but first, help out the MIME sniffer since we often know the correct data type
 	// and are a little smarter than Go's built-in logic
 	results, err := tl.Search(r.Context(), timeline.ItemSearchParams{
@@ -448,11 +454,17 @@ func (s server) motionPhoto(w http.ResponseWriter, r *http.Request, tl openedTim
 	// if we found/have a separate data file as the motion photo, make its full path now
 	var inputFile string
 	if videoDataFile != "" {
+		if err := tl.EnsureDataFile(r.Context(), videoDataFile); err != nil {
+			return err
+		}
 		inputFile = tl.FullPath(videoDataFile)
 	}
 
 	// no sidecar motion pic, see if it's embedded in the photo file
 	if videoDataFile == "" {
+		if err := tl.EnsureDataFile(r.Context(), imgDataFile); err != nil {
+			return err
+		}
 		imgFilePath := tl.FullPath(imgDataFile)
 
 		// get the bytes of just the video from within the image file
@@ -571,6 +583,9 @@ func (s server) downloadItem(w http.ResponseWriter, r *http.Request, tl openedTi
 		content = bytes.NewReader([]byte(*itemRow.DataText))
 
 	case itemRow.DataFile != nil:
+		if err := tl.EnsureDataFile(r.Context(), *itemRow.DataFile); err != nil {
+			return err
+		}
 		f, err := os.Open(tl.FullPath(*itemRow.DataFile))
 		if err != nil {
 			return err

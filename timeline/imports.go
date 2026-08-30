@@ -42,6 +42,9 @@ type importJobCheckpoint struct {
 	// these fields remember the count of new items that will need thumbnails
 	ThumbnailCount int64 `json:"thumbnail_count"`
 
+	// fork: running counters, so they survive pauses/resumes and are visible while running
+	Counters ImportCounters `json:"counters"`
+
 	// This is passed through to the data source; and we would be using
 	// json.RawMessage here so that, when loading a checkpoint, the
 	// raw bytes are returned to the data source, but this would mean
@@ -84,8 +87,34 @@ func (ij ImportJob) checkpoint(estimatedSize *int64, outer, inner int, ds any) e
 		OuterIndex:           outer,
 		InnerIndex:           inner,
 		ThumbnailCount:       atomic.LoadInt64(ij.thumbnailCount),
+		Counters:             ij.counters(),
 		DataSourceCheckpoint: ds,
 	})
+}
+
+// ImportCounters are the item/entity counts of an import. They are persisted in the
+// job checkpoint while running and summarized in the job's final message on success.
+type ImportCounters struct {
+	Items        int64 `json:"items"` // graphs/items processed, including skipped ones
+	NewItems     int64 `json:"new_items"`
+	UpdatedItems int64 `json:"updated_items"`
+	SkippedItems int64 `json:"skipped_items"`
+	NewEntities  int64 `json:"new_entities"`
+}
+
+func (c ImportCounters) String() string {
+	return fmt.Sprintf("%d new, %d updated, %d skipped items; %d new entities (%d processed)",
+		c.NewItems, c.UpdatedItems, c.SkippedItems, c.NewEntities, c.Items)
+}
+
+func (ij ImportJob) counters() ImportCounters {
+	return ImportCounters{
+		Items:        atomic.LoadInt64(ij.itemCount),
+		NewItems:     atomic.LoadInt64(ij.newItemCount),
+		UpdatedItems: atomic.LoadInt64(ij.updatedItemCount),
+		SkippedItems: atomic.LoadInt64(ij.skippedItemCount),
+		NewEntities:  atomic.LoadInt64(ij.newEntityCount),
+	}
 }
 
 // TODO: This was useful during the refactoring of the import flow, but
@@ -145,6 +174,12 @@ func (ij *ImportJob) Run(job *ActiveJob, checkpoint []byte) error {
 		}
 		// restore thumbnail-eligible item count
 		atomic.StoreInt64(ij.thumbnailCount, chkpt.ThumbnailCount)
+		// restore counters
+		atomic.StoreInt64(ij.itemCount, chkpt.Counters.Items)
+		atomic.StoreInt64(ij.newItemCount, chkpt.Counters.NewItems)
+		atomic.StoreInt64(ij.updatedItemCount, chkpt.Counters.UpdatedItems)
+		atomic.StoreInt64(ij.skippedItemCount, chkpt.Counters.SkippedItems)
+		atomic.StoreInt64(ij.newEntityCount, chkpt.Counters.NewEntities)
 		// in theory, resuming a job should have the same configuration as
 		// before, so this may take us out of "estimating" mode if that had
 		// already been completed, but I don't think it should ever put us
@@ -397,7 +432,8 @@ func (ij *ImportJob) Run(job *ActiveJob, checkpoint []byte) error {
 		return err
 	}
 
-	job.Logger().Info("import complete; cleaning up")
+	job.Logger().Info("import complete; cleaning up", zap.Any("counters", ij.counters()))
+	job.FinalMessage(ij.counters().String())
 
 	if err := ij.successCleanup(); err != nil {
 		job.Logger().Error("cleaning up after import job", zap.Error(err))
@@ -405,6 +441,7 @@ func (ij *ImportJob) Run(job *ActiveJob, checkpoint []byte) error {
 
 	ij.generateThumbnailsForImportedItems()
 	ij.generateEmbeddingsForImportedItems()
+	ij.uploadToImmichForImportedItems()
 
 	// this can prevent/resolve slow queries, especially useful after (large) imports
 	// TODO: maybe only necessary after *large* imports

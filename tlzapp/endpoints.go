@@ -103,6 +103,20 @@ func (app *App) registerCommands() {
 			Payload: getEntityPayload{},
 			Help:    "Returns information about the given entity.",
 		},
+		"immich-status": {
+			Handler:     app.server.handleImmichStatus,
+			Method:      methodQuery,
+			Payload:     immichStatusPayload{},
+			ContentType: JSON,
+			Help:        "Reports Immich connectivity and how many media files are stored there (fork).",
+		},
+		"immich-sync": {
+			Handler:     app.server.handleImmichSync,
+			Method:      http.MethodPost,
+			Payload:     immichSyncPayload{},
+			ContentType: JSON,
+			Help:        "Queues a job that uploads image/video files to Immich; --import_job_id limits it to one import, --evict deletes local copies afterwards (fork).",
+		},
 		"import": {
 			Handler: app.server.handleImport,
 			Method:  http.MethodPost,

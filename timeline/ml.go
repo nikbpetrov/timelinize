@@ -268,6 +268,9 @@ func (ej embeddingJob) generateEmbeddingForItem(ctx context.Context, job *Active
 
 	// convert data file path (if there is one) into a full filename
 	if dataFile != nil {
+		if err := job.tl.EnsureDataFile(job.ctx, *dataFile); err != nil {
+			return err
+		}
 		fn := job.tl.FullPath(*dataFile)
 		filename = &fn
 	}

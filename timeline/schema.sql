@@ -391,3 +391,18 @@ CREATE TRIGGER IF NOT EXISTS prevent_stray_attributes
 	BEGIN
 		DELETE FROM attributes WHERE id=OLD.attribute_id;
 	END;
+
+-- Media uploaded to Immich (fork). One row per distinct data file content; items sharing the
+-- bytes (same data_hash) share the asset. The local data file is a cache once a row exists here.
+CREATE TABLE IF NOT EXISTS "immich_assets" (
+	"data_hash" BLOB PRIMARY KEY, -- BLAKE3 of the file contents, same as items.data_hash
+	"asset_id" TEXT NOT NULL UNIQUE, -- Immich asset UUID
+	"sha1" TEXT NOT NULL, -- hex SHA-1 (Immich's checksum), for bulk-upload-check reconciliation
+	"data_file" TEXT NOT NULL, -- repo-relative path of the local file at upload time
+	"media_type" TEXT,
+	"size" INTEGER,
+	"item_id" INTEGER, -- the item this was first uploaded for
+	"uploaded" INTEGER NOT NULL, -- unix ms
+	"status" TEXT NOT NULL, -- created | duplicate (already in Immich before we uploaded)
+	"evicted" INTEGER -- unix ms when the local copy was deleted (NULL = local copy kept)
+);

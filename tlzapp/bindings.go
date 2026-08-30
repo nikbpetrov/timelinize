@@ -120,6 +120,13 @@ func (app *App) openRepository(ctx context.Context, repoDir string, create bool)
 		return app.ObfuscationMode(tl)
 	})
 
+	// fork: Immich media store (app-level config applied to every opened repo)
+	if app.cfg != nil && app.cfg.Immich != nil {
+		if err := tl.SetImmich(*app.cfg.Immich); err != nil {
+			app.log.Error("configuring Immich media store; continuing without it", zap.Error(err))
+		}
+	}
+
 	// check once more that the timeline is not already open; we only
 	// compared folder paths, now we have actual IDs to compare
 	for _, otl := range openTimelines {
@@ -1103,4 +1110,23 @@ func (app App) ObfuscationMode(repo *timeline.Timeline) (timeline.ObfuscationOpt
 	app.cfg.RLock()
 	defer app.cfg.RUnlock()
 	return app.cfg.Obfuscation, app.cfg.Obfuscation.AppliesTo(repo)
+}
+
+// ImmichSync queues a job that uploads image/video data files to Immich. importJobID limits
+// the job to one import (0 = whole repo); evict deletes local copies after confirming uploads.
+func (App) ImmichSync(repoID string, importJobID uint64, evict bool) (uint64, error) {
+	tl, err := getOpenTimeline(repoID)
+	if err != nil {
+		return 0, err
+	}
+	return tl.CreateImmichJob(importJobID, evict)
+}
+
+// ImmichStatus reports the Immich mapping status for a repo.
+func (app App) ImmichStatus(repoID string) (timeline.ImmichStatus, error) {
+	tl, err := getOpenTimeline(repoID)
+	if err != nil {
+		return timeline.ImmichStatus{}, err
+	}
+	return tl.ImmichStatus(app.ctx)
 }

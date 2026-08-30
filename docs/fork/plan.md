@@ -1,71 +1,42 @@
-# Fork plan — current form (2026-08-30)
+# Fork plan — status (2026-08-30)
 
 ## Goals (as decided)
 1. Meta exports (Instagram, Facebook) import completely and faithfully: all message folders, attachments with their files,
    shares represented as their own items (not as the sender's words), own stories/posts with media.
-2. Shared links are enriched: reels/videos downloaded (yt-dlp), photo posts downloaded (gallery-dl fallback),
+2. Shared links are enriched: reels/videos downloaded (yt-dlp), photo/carousel posts downloaded (gallery-dl),
    everything else metadata-only (URL, kind, author, caption, status). Own-story links resolve offline to the
    already-imported story items. Never scrape Facebook pages.
-3. Media lives in **Immich** as the canonical store: uploaded at import with dedup, `visibility=archive`, in the single
-   album "Timelinize", tagged per source, dated by item timestamp. Timelinize keeps ids/metadata and its own thumbnails;
-   if Immich is down, imports/UI degrade gracefully. Local cache is rebuildable from Immich (and vice versa).
-4. Every remote interaction (link fetch, Immich) is logged per item with outcome, and summarised per import.
-5. Periodic re-imports from untouched ground-truth exports are idempotent and verifiable by counts.
+3. Media lives in **Immich** as the canonical store: uploaded after import with dedup, `visibility=archive`, in the single
+   album "Timelinize", tagged per source, dated by item timestamp. Timelinize keeps ids and its own thumbnails; the local
+   copy is a cache that can be evicted and is restored on demand. If Immich is down, imports/UI degrade gracefully.
+4. Every remote interaction (link fetch, Immich) is logged per item with outcome, and summarised per job.
+5. Re-imports from untouched ground-truth exports are idempotent and verifiable by counts.
 
-## Status
-- Done on `dev` branch (uncommitted): dev filters (`facebook.Filters`), extra message folders (`message_requests`,
-  `filtered_threads`, `e2ee_cutover`), FB username fallback, reaction-actor `FixString`, docs.
-- Trials done: yt-dlp + cookies (reels OK, photo posts need gallery-dl), Immich API (upload/dedup/fetch/album OK;
-  needs `asset.update`).
+## Status — all phases implemented and verified on the dev dataset (`repo-dev`)
+| Phase | What | Verified by |
+|---|---|---|
+| 0 | `dev` branch on the fork, `.gitignore` for cookies/keys, gallery-dl installed | `git log`, `gallery-dl --version` |
+| 1 | `fillItem` reads the media file directly when it exists in the archive (DM attachments, post media); media walks still cover multi-part exports; dev filters skip the walks | dev: 0 message items without data (was 12/26); FB post `3701647923444080.mp4` gets its file |
+| 2 | Shares -> `ClassBookmark` (canonical URL = original_id; Kind/Author/Caption/Status metadata), placeholders dropped, share-only messages = empty message root with `attachment` edge, own-story links -> `quotes` edge to the story item | `scripts/verify-import.py`: 8 bookmarks, 8 share-only roots, 1 quote, 0 messages containing a link |
+| 3 | `internal/linkfetch`: yt-dlp (reels/videos), gallery-dl (IG posts), cookies, on-disk cache, rate limit, per-import budget, retries, normalized metadata; media attached to the bookmark | dev: 5 reels fetched in ~3.5 s each, cache hits on re-import, budget leaves the rest `unresolved` |
+| 4 | `internal/immich` client + `immich_assets` table + `immich` job (upload with SHA-1 pre-check, album, tag, metadata back-reference), `immich-sync`/`immich-status` endpoints, evict + restore-on-read | dev: 36 files mapped (32 uploaded, 3 trial dupes, 1 FB), album count 36, evict then HTTP GET restores byte-identical file in 0.19 s |
+| 5 | Import counters persisted in the job's final message + checkpoint; `scripts/verify-import.py`; **fixed an upstream race where a scheduled job could start twice** | job messages "60 new, 0 updated, 0 skipped…"; verify script OK for IG and FB |
 
-## Phase 0 — housekeeping (next)
-- Commit current work on `dev`; `.gitignore` for cookies/scratch; push to fork.
+Details per topic: `link-fetching.md`, `immich-media-store.md`, `backlog.md`, `exports.md`; commands in `README.md`.
 
-## Phase 1 — attachments get their files (backlog #1)
-- Instagram: walk `your_instagram_activity/messages/**/{photos,videos,audio,gifs,files}` and emit retrieval-keyed media
-  items (mirror `facebook.processPostMedia`), so `fillItem` stubs get fused with real files. Same walk for FB
-  `e2ee_cutover` / `message_requests` / `filtered_threads`.
-- Done when: dev repo has 0 message items with `data_file NULL`; full IG repo 124/124.
-
-## Phase 2 — shares become bookmark items (backlog #7)
-- `messages.go`: message keeps only typed text; Meta placeholders ("You sent an attachment.", localized variants) dropped;
-  if nothing remains, the share/attachment becomes the graph root (existing pattern).
-- Attached `ClassBookmark` item per share: `original_id` = canonical URL (dedupes across exports even when captions
-  change), `data_text` = URL, metadata `{URL, Kind, Author, Caption, Original content owner, Resolve status}`,
-  owner = author entity (`instagram_username` attribute) when known, else sender; edge `RelAttachment`.
-- Own-story links (`/stories/<own username>/<id>`): story id -> ms timestamp; match imported story item within 2 s -> `RelQuotes`.
-- Done when: the 7386-style message in dev shows caption as bookmark metadata; per-kind counts logged.
-
-## Phase 3 — link resolver + downloads (new package)
-- `linkfetch` package: `Resolver` interface, backends `ytdlp`, `gallerydl`, `none`; router by URL kind
-  (see `link-fetching.md`). Subprocess with `--cookies`, `--write-info-json`, timeout; 1 worker, configurable delay; retry on 429.
-- Table `link_fetches(url PK, kind, status, backend, tried_at, attempts, error, info_json, files)` — cache across imports.
-- Fetched file -> bookmark `Content.Data`; extra carousel slides -> `RelAttachment` media items; info.json -> metadata.
-- Config `link_fetch: {enabled, cookies: {instagram, facebook}, delay_ms, max_per_import, timeout_s}`.
-- Logging: logger `link_fetch`; INFO per URL `{url, kind, backend, status, duration, bytes, error}`; DEBUG stderr on
-  failure; end-of-import summary by kind; failures persisted.
-- Install `gallery-dl`. Done when dev repo resolves: reel -> mp4, `/p/` carousel -> N images, story -> expired, FB text -> metadata.
-
-## Phase 4 — Immich media store (see `immich-media-store.md`)
-- `ItemDataStore` seam (`Put/Open/Thumbnail/Delete/Exists`) with `local` backend = today's behaviour (pure refactor).
-- `immich` backend for `image/*`, `video/*`: SHA-1 pre-check -> upload (`fileCreatedAt` = item timestamp, `filename`
-  `tlz-<source>-<name>`, `visibility=archive`, `metadata=[{timelinize:{repo,item_id,data_source,data_hash}}]`) -> add
-  to album "Timelinize" -> tag `timelinize/<source>`; `items.data_file = immich://<asset id>`; keep BLAKE3 `data_hash`.
-- Serving: proxy `/original`, `/thumbnail?size=`, `/video/playback` (Range passthrough); local thumbnail cache kept.
-- Degradation: Immich unreachable -> fall back to local store for that item and log; reconciliation job later.
-- Migration job for existing local media (idempotent via `bulk-upload-check`).
-- Logging: logger `immich`; per asset `{item_id, asset_id, status created|duplicate|failed, bytes, duration, error}`; summary per import.
-
-## Phase 5 — verification & counters (backlog #4, #5)
-- Persist `new/updated/skipped/total` on the jobs row; CLI import defaults unique constraints (or fails loudly).
-- `scripts/verify-import.py <source> <export> <repo>`: expected vs actual per classification, attachments with data,
-  shares resolved, Immich assets present.
-
-## Parked
-- Native importers for Facebook `events/`, `groups/`, comments; `data_messenger_e2e/` format (different JSON schema).
-- Owner-identity merge (#9); Timeframe-skip propagation (#3); own FB posts (need an export that contains posts).
+## Next
+1. **Run on the main repo** (`/mnt/photos/timelinize/repo`, server :12002): add `link_fetch` + `immich` to
+   `~/.config/timelinize/config.json` (same shape as the dev config), rebuild `timelinize`, then re-import both exports
+   (no filters, `link_fetch.max_per_import` unset). Expect ~3,000 link fetches at 3 s delay (~3 h) — run overnight, watch
+   `logs/server.log` for `link_fetch` errors (rate limits / login walls => re-export cookies). Then `immich-sync` for the
+   existing media, and `--evict true` once the thumbnails job has finished.
+2. Frontend: bookmark items in conversations render as empty messages with an attachment; a small card (kind, author,
+   caption, fetched media) in `frontend/` would make shares readable. Not started.
+3. Facebook: `events/`, `groups/`, comments importers; `data_messenger_e2e/` (different schema); own posts now exist in
+   the export (390 posts, 113 with media) and import fine.
+4. Owner-identity merge (#9), Timeframe-skip propagation (#3).
+5. Immich reconciliation job (assets trashed/deleted in Immich; rebuild `immich_assets` from asset metadata).
 
 ## Needs from the user
-- Immich key: add `asset.update` (dates, archive visibility, metadata updates) and `tag.asset`; keep `asset.delete` off.
-- A Facebook export that includes Posts (current one has none).
-- Check Immich Admin -> Jobs: thumbnails for uploaded assets never generated during the trial.
+- Nothing blocking. Optional: decide whether the main repo should evict local media (`immich.evict_after_upload`) or keep
+  the local cache; whether `link_fetch` should run during the big re-import or be limited per import.

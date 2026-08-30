@@ -80,7 +80,8 @@ Fork: `origin` = github.com/nikbpetrov/timelinize, `upstream` = github.com/timel
 | `datasources/<name>/` | One package per data source; each implements `timeline.FileImporter` |
 | `tlzapp/` | App layer: HTTP API + CLI (symmetric), config, server, frontend serving, Python ML sidecar |
 | `frontend/` | Vanilla JS/HTML/CSS UI, no build step (`pages/*.html`, `resources/js/*.js`) |
-| `internal/` | `tlzmedia` (libvips image ops), `airports` (IATA lookup), `oauth2client` |
+| `internal/` | `tlzmedia` (libvips image ops), `airports` (IATA lookup), `oauth2client`; **fork:** `linkfetch` (yt-dlp/gallery-dl resolver + cache), `immich` (API client) |
+| `scripts/` | **fork:** `dev-reset.sh` / `dev-import.sh` (rebuild the dev repo in ~25 s), `dev-counts.py`, `verify-import.py` |
 | `cmd/cmd.go` | CLI-only subcommands: `serve`, `help`, `reset`, `version`; anything else is an API endpoint name |
 
 ## Dev setup (this machine)
@@ -102,7 +103,11 @@ Fork: `origin` = github.com/nikbpetrov/timelinize, `upstream` = github.com/timel
     --job.processing_options.item_unique_constraints.data true \
     [--job.processing_options.timeframe.since 2025-11-01T00:00:00Z]   # RFC3339 only
   ```
-- Quick verification: `python3 -c "import sqlite3; c=sqlite3.connect('/mnt/photos/timelinize/repo/timeline.db'); ..."` against `items`, `jobs`.
+- Quick verification: `scripts/dev-counts.py [repo]`, `scripts/verify-import.py <source> <export> [filters]`; the import
+  job's final `message` holds "N new, N updated, N skipped items; N new entities".
+- Dev loop: server :12003 (`XDG_CONFIG_HOME=/root/.config/timelinize-dev`) on `repo-dev`; `scripts/dev-reset.sh` after a build.
+- Fork features are configured in `config.json`: `link_fetch` (cookies, delays; per-job override via
+  `processing_options.link_fetch`) and `immich` (url, api_key_file, album). Dev config has both; main (:12002) not yet.
 
 ## Where to look (file:line)
 
@@ -127,6 +132,10 @@ Fork: `origin` = github.com/nikbpetrov/timelinize, `upstream` = github.com/timel
 | Config / env | `tlzapp/config.go` (`~/.config/timelinize/config.json`, `TLZ_ADMIN_ADDR`, `TLZ_ORIGIN` → `server.go:85`) |
 | Python ML sidecar (embeddings/classify) | `tlzapp/python/server/server.py`, `timeline/ml.go` |
 | Demo-mode obfuscation (display copies only) | `timeline/obfuscation.go` |
+| **Fork:** shares -> bookmarks, placeholders, own-story match, resolver call | `datasources/facebook/shares.go`, `messages.go` (share block) |
+| **Fork:** link resolver, cache, statuses | `internal/linkfetch/linkfetch.go`; options `timeline/linkfetch.go` |
+| **Fork:** Immich store: options, upload job, evict, `EnsureDataFile` restore | `timeline/immich.go`, `internal/immich/client.go`, table `immich_assets` in `schema.sql` |
+| **Fork:** persisted import counters, `FinalMessage`, job double-start fix | `timeline/imports.go` (`ImportCounters`), `jobs.go` (`startJob`) |
 
 ## Facts that bite
 
@@ -139,6 +148,9 @@ Fork: `origin` = github.com/nikbpetrov/timelinize, `upstream` = github.com/timel
 - The CLI runs in-process when no server is up — async jobs die with it. Keep `serve` running.
 - Thumbnail generation for videos (ffmpeg/libvpx) dominates import time; leave `thumbnails` off to run it as a separate job.
 - Timeframe values are RFC 3339; the skip only marks the root item (see backlog).
+- **Fork:** share-only DMs are empty `message` rows with an `attachment` edge to a `bookmark` (URL = `original_id`);
+  fetched media hang off the bookmark as `media` items (`original_id = <url>#<slide>`). Immich mapping is by
+  `items.data_hash` (`immich_assets`), the local file stays the path in `data_file` and is a restorable cache.
 
 ## Known gaps / fork backlog
 

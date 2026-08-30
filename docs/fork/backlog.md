@@ -22,6 +22,19 @@ prefix against counts derived from the source with the importer's own rules.
 | 9 | The repo owner (`instagram_username=nik.b.petrov`) and the DM sender "Nikolay Petrov" (`instagram_name`) and the Facebook sender (`facebook_name`) are three separate entities — entities only merge via identifying attributes, never by name | `timeline/entities.go:472` (by design) | owner appears 3× in dev repo; needs manual merge or an importer hint (e.g. DM sender == profile name ⇒ attach `instagram_name` to owner) |
 | 10 | Facebook import fails with "configured username () does not match" when no `username` option is given, even though the manifest has it — **fixed on fork** (manifest is authoritative when option empty) | `datasources/facebook/archive.go:703` | first FB dev import failed |
 
+## Status of the table above (2026-08-30)
+Fixed on the fork: #1 (direct read in `fillItem`), #2, #4 (counters/verify make it visible; constraints still required),
+#5 (counters persisted in job message + checkpoint), #7 (bookmarks + link fetching), #8, #10. Open: #3, #6 (by design), #9.
+
+## Found later (2026-08-30)
+| # | Issue | Where | Status |
+|---|---|---|---|
+| 11 | **A scheduled job could run twice concurrently**: the post-job dequeue picked queued jobs whose `start` was still in the future, and the scheduled-start timer only re-checked "not aborted"; deferred SQLite txs let both read `queued`. Seen as two "import complete" lines for one job, counters wrong, and (worse) two importers racing on the same data | `timeline/jobs.go` startJob / dequeue | **fixed** (conditional `UPDATE … WHERE state IN (queued, interrupted, paused)` + RowsAffected, timer re-checks state, dequeue skips future `start`) |
+| 12 | Place names/addresses in posts, tagged places and check-ins skipped `FixString` -> mojibake place entities (8 in dev) | `datasources/facebook/archive.go` | **fixed** |
+| 13 | FB post `external_context` attachments become `ClassLocation` items (upstream oddity); attachments with the same timestamp and empty name merge under the unique constraints | `archive.go` ~L258 | documented in `verify-import.py`; not changed |
+| 14 | Share-only DMs are empty `message` roots (kept by the pipeline because of their edges); the UI shows an empty bubble with the bookmark as attachment | `messages.go` | by design for now; frontend card is the follow-up |
+| 15 | `evict` while a thumbnails job runs restores the files it reads (local = cache); the job framework has no ordering | `timeline/immich.go` | documented; run evict after thumbnails |
+
 ## Dev filters (added on fork)
 
 `facebook.Filters` (embedded in `facebook.Options` and `instagram.Options`): `max_posts`, `max_stories`, `conversations[]` (substring of `inbox/<thread>` path), `max_messages_per_conversation` (newest first). Also now walks `message_requests`, `filtered_threads`, `e2ee_cutover`. Pass via `--job.plan.files[0].data_source_options.<field>`. Dev repo: `/mnt/photos/timelinize/repo-dev`.

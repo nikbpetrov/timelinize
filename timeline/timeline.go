@@ -62,6 +62,9 @@ type Timeline struct {
 
 	obfuscationMode func() (ObfuscationOptions, bool)
 
+	// optional Immich media store (fork)
+	immich *immichStore
+
 	// currently-running jobs for this timeline
 	activeJobs   map[uint64]*ActiveJob
 	activeJobsMu sync.RWMutex

@@ -302,7 +302,10 @@ func (p *processor) integrityCheck(dbItem ItemRow) error {
 		return errors.New("checksum missing")
 	}
 
-	// file must open successfully
+	// file must open successfully (restore from Immich first if evicted)
+	if err := p.tl.EnsureDataFile(p.ij.job.ctx, *dbItem.DataFile); err != nil {
+		return err
+	}
 	datafile, err := os.Open(p.tl.FullPath(*dbItem.DataFile))
 	if err != nil {
 		return fmt.Errorf("opening existing data file: %w", err)

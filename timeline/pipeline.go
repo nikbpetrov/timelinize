@@ -491,7 +491,10 @@ func (p *processor) handleDuplicateItemDataFile(ctx context.Context, tx *sql.Tx,
 		zap.Stringp("existing_data_file", existingDataFilePath),
 		zap.Binary("checksum", it.dataFileHash))
 
-	// ensure the existing file is still the same
+	// ensure the existing file is still the same (restoring it from Immich first if it was evicted)
+	if err := p.tl.EnsureDataFile(ctx, *existingDataFilePath); err != nil {
+		return false, err
+	}
 	h := newHash()
 	f, err := os.Open(p.tl.FullPath(*existingDataFilePath))
 	if err != nil {

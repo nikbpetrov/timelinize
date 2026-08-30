@@ -34,4 +34,25 @@ timelinize import --repo <id> $UC --job.plan.files[0].data_source_name facebook 
   --job.plan.files[0].data_source_options.max_messages_per_conversation 15
 ```
 
-Expected dev counts: instagram social 15 / media 5 / message 26; facebook message 30; 7 entities, 0 mojibake.
+Expected dev counts (after the fork changes): instagram social 15 / media 11 (5 stories + 1 quoted story + 5 fetched
+reels) / message 26 (8 share-only, no data) / bookmark 8; facebook message 29 / social 10 / location 58 / bookmark 3;
+45 entities, 0 mojibake. `scripts/verify-import.py` derives these from the exports.
+
+## Scripts (`scripts/`)
+| Script | What |
+|---|---|
+| `dev-reset.sh` | stop dev server, wipe `repo-dev`, restart, create repo, run `dev-import.sh` (~25 s incl. 5 link fetches) |
+| `dev-import.sh` | the two filtered imports above with unique constraints + `link_fetch` (`LF_MAX` fetches/import, default 5) |
+| `dev-counts.py [repo]` | items per source/classification, no-data counts, entities, mojibake |
+| `verify-import.py <source> <export> [filters]` | expected (from export, importer rules) vs actual; bookmarks by status, Immich mapping, job counters |
+
+## Dev config (`/root/.config/timelinize-dev/timelinize/config.json`)
+```json
+{ "repositories": ["/mnt/photos/timelinize/repo-dev"],
+  "link_fetch": { "enabled": true, "delay_ms": 3000, "timeout_s": 120,
+                  "cookies": { "instagram": "/root/.config/timelinize/cookies/instagram.txt",
+                               "facebook":  "/root/.config/timelinize/cookies/facebook.txt" } },
+  "immich": { "enabled": true, "url": "http://10.0.10.32:2283",
+              "api_key_file": "/root/.config/timelinize/immich.key", "album": "Timelinize" } }
+```
+The main server (:12002) does not have these yet — add the same two keys to `~/.config/timelinize/config.json` when ready.
