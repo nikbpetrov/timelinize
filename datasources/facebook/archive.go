@@ -209,10 +209,13 @@ func (a Archive) processPostsFile(ctx context.Context, d timeline.DirEntry, file
 		*postCount++
 
 		var postText string
+		var backdated int64
 		for _, postData := range post.Data {
-			if postData.Post != "" {
+			if postData.Post != "" && postText == "" {
 				postText = FixString(postData.Post)
-				break
+			}
+			if postData.BackdatedTimestamp > 0 {
+				backdated = postData.BackdatedTimestamp
 			}
 		}
 
@@ -228,6 +231,57 @@ func (a Archive) processPostsFile(ctx context.Context, d timeline.DirEntry, file
 			},
 		}
 		ig := &timeline.Graph{Item: item}
+
+		// Life events ("Moved to London", "Started at University of Oxford", ...) are added years
+		// after the fact; Facebook places them at backdated_timestamp / start_date, so we do too and
+		// keep the time they were added as metadata. The event's title and description are the
+		// post's text (the post itself never has any), its photos are ordinary attachments.
+		for _, attachmentGroup := range post.Attachments {
+			for _, attachment := range attachmentGroup.Data {
+				le := attachment.LifeEvent
+				if le.Title == "" {
+					continue
+				}
+				text := FixString(le.Title)
+				if desc := FixString(le.Description); desc != "" {
+					text += "\n\n" + desc
+				}
+				if postText == "" {
+					postText = text
+					item.Content.Data = timeline.StringData(text)
+				}
+				item.Metadata["Life event"] = FixString(le.Title)
+				item.Metadata["Posted"] = item.Timestamp
+				switch {
+				case backdated > 0:
+					item.Timestamp = time.Unix(backdated, 0).UTC()
+				case !le.StartDate.isZero():
+					item.Timestamp = le.StartDate.time()
+				}
+				if !le.StartDate.isZero() {
+					item.Metadata["Start date"] = le.StartDate.String()
+				}
+				if !le.EndDate.isZero() {
+					item.Metadata["End date"] = le.EndDate.String()
+				}
+				if !le.Place.isEmpty() {
+					ig.ToEntity(timeline.RelAttachment, le.Place.entity())
+				}
+				for _, photo := range le.Photos {
+					if photo.URI == "" {
+						continue
+					}
+					photoItem := &timeline.Item{
+						Classification: timeline.ClassSocial,
+						Owner:          a.owner,
+						Timestamp:      item.Timestamp,
+						Metadata:       make(timeline.Metadata),
+					}
+					photo.fillItem(photoItem, d, postText, params.Log)
+					ig.ToItem(timeline.RelAttachment, photoItem)
+				}
+			}
+		}
 
 		const nameMatchIndex = 1
 		if matches := wroteOnOtherTimelineRegex.FindStringSubmatch(FixString(post.Title)); len(matches) == nameMatchIndex+1 {
@@ -280,31 +334,27 @@ func (a Archive) processPostsFile(ctx context.Context, d timeline.DirEntry, file
 						attachedItem.Metadata["Title"] = name
 					}
 					attachedItem.Timestamp = item.Timestamp
-				case attachment.Place.Name != "" ||
-					attachment.Place.Address != "" ||
-					attachment.Place.URL != "" ||
-					(attachment.Place.Coordinate.Latitude != 0 && attachment.Place.Coordinate.Longitude != 0):
+				case attachment.Event.Name != "":
+					// a shared / attended event: an event item attached to the post, spanning the
+					// event's own time (the post keeps the time it was shared)
+					attachedItem.Classification = timeline.ClassEvent
+					attachedItem.Content.Data = timeline.StringData(FixString(attachment.Event.Name))
+					attachedItem.Metadata["Name"] = FixString(attachment.Event.Name)
+					if attachment.Event.StartTimestamp > 0 {
+						attachedItem.Timestamp = time.Unix(attachment.Event.StartTimestamp, 0).UTC()
+						attachedItem.Metadata["Start"] = attachedItem.Timestamp
+					}
+					if attachment.Event.EndTimestamp > 0 {
+						attachedItem.Timespan = time.Unix(attachment.Event.EndTimestamp, 0).UTC()
+						attachedItem.Metadata["End"] = attachedItem.Timespan
+					}
+				case !attachment.Place.isEmpty():
 					// We don't know the context of this attachment; is it something like, "I visited this
 					// place, it was cool?" or is it like "Hey everyone, this place is having an event
 					// that you should go to" -- i.e. does it necessarily mean the owner is at this place?
 					// Maybe sometimes, but I don't know that we know for sure.
 					// I wonder if we should just store this as an entity and attach it
-
-					address := timeline.Attribute{
-						Name:  "address",
-						Value: FixString(attachment.Place.Address),
-					}
-					if attachment.Place.Coordinate.Latitude != 0 && attachment.Place.Coordinate.Longitude != 0 {
-						address.Latitude = &attachment.Place.Coordinate.Latitude
-						address.Longitude = &attachment.Place.Coordinate.Longitude
-					}
-
-					place := &timeline.Entity{
-						Type:       timeline.EntityPlace,
-						Name:       FixString(attachment.Place.Name),
-						Attributes: []timeline.Attribute{address},
-					}
-					ig.ToEntity(timeline.RelAttachment, place)
+					ig.ToEntity(timeline.RelAttachment, attachment.Place.entity())
 				}
 
 				// newDescription := strings.Join(allText, "\n")

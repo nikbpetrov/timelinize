@@ -43,7 +43,7 @@ Fixed on the fork: #1 (direct read in `fillItem`), #2, #4 (counters/verify make 
 | 23 | Shared links in Facebook posts became nameless `location` items (invisible, and pruned once #19 works) | `archive.go` external_context | **fixed** (bookmark keyed by canonical URL, like DM shares) |
 | 24 | Group-thread conversations (Messenger groups, 10+ participants) render nothing in the conversation view; two-party threads are fine | `frontend/resources/js/conversations.js` / `timeline/conversations.go` | open; the UI test skips group threads with an annotation |
 | 25 | Reaction pseudo-messages ("Reacted X to your message", "Liked a message") are imported as messages although the reaction is already an edge on your message (1,031 in the IG export) | `messages.go` | open (cases `ig-msg-pseudo-reaction`, `-pseudo-like`, `fb-msg-pseudo-reaction`) |
-| 26 | Not imported at all: Messenger `files[]` attachments (549), life events, event shares, call durations, shared locations' coordinates, the `ip` field | importers | open (cases carry `known_issue`) |
+| 26 | Not imported at all: Messenger `files[]` attachments (549), call durations, shared locations' coordinates, the `ip` field | importers | open (cases carry `known_issue`); life events and event shares done 2026-08-30 (`fb-post-life-event*`, `fb-post-event-*`) |
 | 15 | `evict` while a thumbnails job runs restores the files it reads (local = cache); the job framework has no ordering | `timeline/immich.go` | documented; run evict after thumbnails |
 
 ## Dev filters (added on fork)

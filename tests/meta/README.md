@@ -41,12 +41,12 @@ relationship), `data_text_contains`, `data_file` (suffix), `data_file_contains`,
 Attachments carry the **media's own `creation_timestamp`** (second precision), not the message's `timestamp_ms`;
 select them by `data_file`.
 
-Assertions on each matched item: `count` (exact; `0` asserts absence; omitted = at least one), `classification`,
+Assertions on each matched item: `count` (exact; `0` asserts absence; omitted = at least one), `ts` / `timespan` (exact ms), `classification`,
 `data_text` (string, or `null` = must be empty), `data_text_contains`, `has_text`, `data_file` (`true`/`false` or a suffix),
 `data_type_prefix`, `owner` (entity name or identity attribute value, e.g. the username), `metadata` (subset, values
 compared as strings), `metadata_has` (keys), `edges_out` / `edges_in` (each must match at least one relationship:
 `label`, `value`, `to_entity`/`from_entity` (name or identity value), `to_entity_contains`, `to_entity_type`,
-`to_item`/`from_item` {`classification`, `data_text`, `data_text_contains`, `data_file`, `data_file_contains`}),
+`to_item`/`from_item` {`ts`, `timespan`, `classification`, `data_text`, `data_text_contains`, `data_file`, `data_file_contains`}),
 `edges_out_count` {label: n}.
 
 `checks` are global SQL invariants (`select count(*) …` must equal `expect`), e.g. no mojibake entities, no message

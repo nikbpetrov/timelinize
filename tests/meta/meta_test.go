@@ -72,6 +72,8 @@ type where struct {
 type itemExpect struct {
 	Where            where           `json:"where"`
 	Count            *int            `json:"count"`
+	TS               *int64          `json:"ts"`       // exact items.timestamp (ms)
+	Timespan         *int64          `json:"timespan"` // exact items.timespan (ms)
 	Classification   string          `json:"classification"`
 	DataText         json.RawMessage `json:"data_text"` // string, or null = must be empty
 	DataTextContains string          `json:"data_text_contains"`
@@ -98,6 +100,8 @@ type edgeExpect struct {
 }
 
 type itemMatch struct {
+	TS               *int64 `json:"ts"`
+	Timespan         *int64 `json:"timespan"`
 	Classification   string `json:"classification"`
 	DataText         string `json:"data_text"`
 	DataTextContains string `json:"data_text_contains"`
@@ -110,6 +114,7 @@ type itemMatch struct {
 type item struct {
 	ID          int64
 	TS          *int64
+	Timespan    *int64
 	Class       string
 	DataText    *string
 	DataFile    *string
@@ -143,7 +148,7 @@ func openRepo(t *testing.T, dir string) *repo {
 }
 
 func (r *repo) items(source string, w where) ([]item, error) {
-	q := `SELECT i.id, i.timestamp, coalesce(c.name,''), i.data_text, i.data_file, i.data_type, i.metadata, i.attribute_id,
+	q := `SELECT i.id, i.timestamp, i.timespan, coalesce(c.name,''), i.data_text, i.data_file, i.data_type, i.metadata, i.attribute_id,
 		NOT EXISTS (SELECT 1 FROM relationships x WHERE x.to_item_id = i.id)
 		FROM items i JOIN data_sources ds ON ds.id = i.data_source_id LEFT JOIN classifications c ON c.id = i.classification_id
 		WHERE ds.name = ? AND i.deleted IS NULL`
@@ -166,7 +171,7 @@ func (r *repo) items(source string, w where) ([]item, error) {
 	for rows.Next() {
 		var it item
 		var meta *string
-		if err := rows.Scan(&it.ID, &it.TS, &it.Class, &it.DataText, &it.DataFile, &it.DataType, &meta, &it.AttributeID, &it.Root); err != nil {
+		if err := rows.Scan(&it.ID, &it.TS, &it.Timespan, &it.Class, &it.DataText, &it.DataFile, &it.DataType, &meta, &it.AttributeID, &it.Root); err != nil {
 			return nil, err
 		}
 		if meta != nil {
@@ -241,9 +246,9 @@ func (r *repo) edges(itemID int64, out bool) ([]edge, error) {
 func (r *repo) itemByID(id int64) (item, error) {
 	var it item
 	var meta *string
-	err := r.db.QueryRow(`SELECT i.id, i.timestamp, coalesce(c.name,''), i.data_text, i.data_file, i.data_type, i.metadata, i.attribute_id
+	err := r.db.QueryRow(`SELECT i.id, i.timestamp, i.timespan, coalesce(c.name,''), i.data_text, i.data_file, i.data_type, i.metadata, i.attribute_id
 		FROM items i LEFT JOIN classifications c ON c.id = i.classification_id WHERE i.id = ?`, id).
-		Scan(&it.ID, &it.TS, &it.Class, &it.DataText, &it.DataFile, &it.DataType, &meta, &it.AttributeID)
+		Scan(&it.ID, &it.TS, &it.Timespan, &it.Class, &it.DataText, &it.DataFile, &it.DataType, &meta, &it.AttributeID)
 	if meta != nil {
 		_ = json.Unmarshal([]byte(*meta), &it.Metadata)
 	}
@@ -264,6 +269,9 @@ func (it item) String() string {
 	if it.TS != nil {
 		ts = time.UnixMilli(*it.TS).UTC().Format(time.RFC3339)
 	}
+	if it.Timespan != nil {
+		ts += "→" + time.UnixMilli(*it.Timespan).UTC().Format(time.RFC3339)
+	}
 	txt := str(it.DataText)
 	if len(txt) > 50 {
 		txt = txt[:50] + "…"
@@ -283,6 +291,12 @@ func matchItem(r *repo, m *itemMatch, id *int64) bool {
 		return false
 	}
 	if m.Classification != "" && it.Class != m.Classification {
+		return false
+	}
+	if m.TS != nil && (it.TS == nil || *it.TS != *m.TS) {
+		return false
+	}
+	if m.Timespan != nil && (it.Timespan == nil || *it.Timespan != *m.Timespan) {
 		return false
 	}
 	if m.DataText != "" && str(it.DataText) != m.DataText {
@@ -356,6 +370,12 @@ func checkItem(t *testing.T, r *repo, it item, x itemExpect) {
 	t.Helper()
 	if x.Classification != "" && it.Class != x.Classification {
 		t.Errorf("classification: want %q, got %s", x.Classification, it)
+	}
+	if x.TS != nil && (it.TS == nil || *it.TS != *x.TS) {
+		t.Errorf("timestamp: want %d (%s), got %s", *x.TS, time.UnixMilli(*x.TS).UTC().Format(time.RFC3339), it)
+	}
+	if x.Timespan != nil && (it.Timespan == nil || *it.Timespan != *x.Timespan) {
+		t.Errorf("timespan: want %d (%s), got %s", *x.Timespan, time.UnixMilli(*x.Timespan).UTC().Format(time.RFC3339), it)
 	}
 	if len(x.DataText) > 0 {
 		if string(x.DataText) == "null" {

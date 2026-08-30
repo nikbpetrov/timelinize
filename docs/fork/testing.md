@@ -15,7 +15,7 @@ subtype, each pointing at real records in the ground-truth exports) with the rep
 
 | Piece | Where | Run |
 |---|---|---|
-| Case manifest | `testdata/meta/cases.json` (68 cases, 7 global checks) | — |
+| Case manifest | `testdata/meta/cases.json` (75 cases, 7 global checks) | — |
 | Fixture builder | `scripts/build-testing-data.py` → `/mnt/photos/timelinize/testing-data/{instagram,facebook/data}` + `MANIFEST.md` | `python3 scripts/build-testing-data.py` |
 | Import-level tests | `tests/meta/meta_test.go` (vocabulary in `tests/meta/README.md`) | `PKG_CONFIG_PATH=/usr/local/lib/pkgconfig GOTOOLCHAIN=go1.25.8 CGO_ENABLED=1 go test ./tests/meta` |
 | Same checks on a live repo | — | `TLZ_TEST_REPO=/mnt/photos/timelinize/repo-dev go test ./tests/meta` |
@@ -77,7 +77,8 @@ Case ids in `cases.json`; ✔ = represented as intended, ⚠ = current behaviour
 | shared link, with / without text | 76 / 22 | `fb-post-shared-link-with-text`, `-no-text` | ✔ `bookmark` attachment keyed by URL (upstream: nameless `location` item) |
 | photo / video / 2 photos / 12 photos + video | 16 / 35 / 3 / 1 | `fb-post-photo`, `-video`, `-multi-photo-no-text`, `-many-photos-and-video` | ✔ media read directly; walk also covers multi-part exports |
 | media + place / place only ("travelling to") | 19 / 2 | `fb-post-video-with-place`, `-place-only` | ✔ `attachment` edge to a place entity (mojibake fixed) |
-| life event / event share | 7 / 2 | `fb-post-life-event`, `-event-share` | ⚠ attachments ignored → post pruned entirely |
+| life event (description + photos / place / start+end exported as two entries) | 7 | `fb-post-life-event`, `-life-event-place`, `-life-event-end-date` | ✔ social item placed at `backdated_timestamp` ("Posted" = when added), text = title + description, photos attached, place entity; was pruned entirely (its photos then surfaced as undated orphan `media` via the media walk) |
+| event share / "was attending" | 3 | `fb-post-event-share`, `-event-attended` | ✔ `event` item attached to the post, Timestamp/Timespan = event start/end; was pruned |
 | wrote on someone's **profile** | 34 | `fb-post-wrote-on-timeline` | ✔ `sent` edge (upstream regex only knew "timeline") |
 | cross-posted from Instagram | 9 | `fb-post-shared-from-instagram` | ✔ |
 | featured-section item | 11 | `fb-post-featured-item` | ✔ |

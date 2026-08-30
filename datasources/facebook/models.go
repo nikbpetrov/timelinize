@@ -98,6 +98,49 @@ type fbDate struct {
 	Day   int `json:"day"`
 }
 
+func (d fbDate) isZero() bool { return d.Year == 0 && d.Month == 0 && d.Day == 0 }
+
+// time returns midnight UTC of the date (Facebook gives no time of day for these).
+func (d fbDate) time() time.Time {
+	return time.Date(d.Year, time.Month(d.Month), d.Day, 0, 0, 0, 0, time.UTC)
+}
+
+func (d fbDate) String() string { return fmt.Sprintf("%04d-%02d-%02d", d.Year, d.Month, d.Day) }
+
+// fbPlace is a place attached to a post or a life event.
+type fbPlace struct {
+	Name       string `json:"name"`
+	Coordinate struct {
+		Latitude  float64 `json:"latitude"`
+		Longitude float64 `json:"longitude"`
+	} `json:"coordinate"`
+	Address string `json:"address"`
+	URL     string `json:"url"`
+}
+
+func (p fbPlace) isEmpty() bool {
+	return p.Name == "" && p.Address == "" && p.URL == "" &&
+		(p.Coordinate.Latitude == 0 || p.Coordinate.Longitude == 0)
+}
+
+// entity converts the place to a place entity (coordinates on the address attribute).
+func (p fbPlace) entity() *timeline.Entity {
+	address := timeline.Attribute{
+		Name:  "address",
+		Value: FixString(p.Address),
+	}
+	if p.Coordinate.Latitude != 0 && p.Coordinate.Longitude != 0 {
+		lat, lon := p.Coordinate.Latitude, p.Coordinate.Longitude
+		address.Latitude = &lat
+		address.Longitude = &lon
+	}
+	return &timeline.Entity{
+		Type:       timeline.EntityPlace,
+		Name:       FixString(p.Name),
+		Attributes: []timeline.Attribute{address},
+	}
+}
+
 type yourPosts []struct {
 	Timestamp   int64 `json:"timestamp"`
 	Attachments []struct {
@@ -108,19 +151,29 @@ type yourPosts []struct {
 				URL  string `json:"url"`
 			} `json:"external_context"`
 			Media fbArchiveMedia `json:"media"`
-			Place struct {
-				Name       string `json:"name"`
-				Coordinate struct {
-					Latitude  float64 `json:"latitude"`
-					Longitude float64 `json:"longitude"`
-				} `json:"coordinate"`
-				Address string `json:"address"`
-				URL     string `json:"url"`
-			} `json:"place"`
+			Place fbPlace        `json:"place"`
+			// "Nikolay added a life event from 13 April 2023: PhD, University of Cambridge"
+			LifeEvent struct {
+				Title       string           `json:"title"`
+				Description string           `json:"description"`
+				StartDate   fbDate           `json:"start_date"`
+				EndDate     fbDate           `json:"end_date"`
+				Place       fbPlace          `json:"place"`
+				Photos      []fbArchiveMedia `json:"photos"`
+			} `json:"life_event"`
+			// "Nikolay shared an event." / "Nikolay was attending X at Y."
+			Event struct {
+				Name           string `json:"name"`
+				StartTimestamp int64  `json:"start_timestamp"`
+				EndTimestamp   int64  `json:"end_timestamp"`
+			} `json:"event"`
 		} `json:"data"`
 	} `json:"attachments,omitempty"`
 	Data []struct {
 		Post string `json:"post"`
+		// life events carry the date the event is placed at (the post timestamp is when it was added)
+		BackdatedTimestamp int64 `json:"backdated_timestamp"`
+		UpdateTimestamp    int64 `json:"update_timestamp"`
 	} `json:"data"`
 	Title string `json:"title,omitempty"`
 	Tags  []struct {

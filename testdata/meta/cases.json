@@ -1290,8 +1290,7 @@
       "id": "fb-post-life-event",
       "source": "facebook",
       "entity": "post",
-      "subtype": "life event attachment",
-      "known_issue": "life_event attachments are ignored, so the post has no content and is pruned entirely; should become an event/note item",
+      "subtype": "life event with description and 2 photos (placed at backdated_timestamp, not when it was added)",
       "select": {
         "posts": [
           117
@@ -1301,20 +1300,68 @@
         "items": [
           {
             "where": {
+              "ts": 1681416120000,
+              "classification": "social",
+              "has_text": true
+            },
+            "count": 1,
+            "data_text_contains": "PhD, University of Cambridge, 2023-2026\n\nFind. Great. Mentors.",
+            "metadata": {
+              "Life event": "PhD, University of Cambridge, 2023-2026",
+              "Start date": "2023-04-13"
+            },
+            "metadata_has": [
+              "Posted"
+            ],
+            "edges_out_count": {
+              "attachment": 2
+            },
+            "edges_out": [
+              {
+                "label": "attachment",
+                "to_item": {
+                  "classification": "social",
+                  "data_file": "6121007054644986.jpg",
+                  "ts": 1681376880000
+                }
+              },
+              {
+                "label": "attachment",
+                "to_item": {
+                  "classification": "social",
+                  "data_file": "6121007044644987.jpg",
+                  "ts": 1681376880000
+                }
+              }
+            ]
+          },
+          {
+            "where": {
               "ts": 1681412938000,
               "classification": "social"
             },
             "count": 0
+          },
+          {
+            "where": {
+              "data_file": "6121007054644986.jpg"
+            },
+            "count": 1,
+            "classification": "social",
+            "ts": 1681376880000,
+            "metadata": {
+              "Upload IP": "77.78.31.92"
+            }
           }
         ]
-      }
+      },
+      "why": "the export puts everything in attachments[].data[].life_event; the post itself has no text and 'timestamp' is when the entry was added (2023-04-13), while backdated_timestamp is where Facebook shows it"
     },
     {
       "id": "fb-post-event-share",
       "source": "facebook",
       "entity": "post",
-      "subtype": "shared an event (event attachment)",
-      "known_issue": "event attachments are ignored, so the post is pruned entirely",
+      "subtype": "shared an event (event attachment, no own text, mojibake name)",
       "select": {
         "posts": [
           88
@@ -1327,7 +1374,152 @@
               "ts": 1694611731000,
               "classification": "social"
             },
+            "count": 1,
+            "data_text": null,
+            "edges_out": [
+              {
+                "label": "attachment",
+                "to_item": {
+                  "classification": "event",
+                  "data_text_contains": "NEON PARTY | by Alex & Tini",
+                  "ts": 1696701600000,
+                  "timespan": 1696719600000
+                }
+              }
+            ]
+          },
+          {
+            "where": {
+              "ts": 1696701600000,
+              "classification": "event"
+            },
+            "count": 1,
+            "data_text_contains": "salsa bachata kizomba"
+          }
+        ]
+      },
+      "why": "post has no text of its own; the event's name is mojibake in the export and must be decoded"
+    },
+    {
+      "id": "fb-post-life-event-place",
+      "source": "facebook",
+      "entity": "post",
+      "subtype": "life event with a place and no description/photos ('Moved to Oxford'), backdated by 2.5 years",
+      "why": "life_event.place must become a place entity like a post's place attachment; the title alone is the text",
+      "select": {
+        "posts": [
+          118
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1601542800000,
+              "classification": "social"
+            },
+            "count": 1,
+            "data_text": "Moved to Oxford, Oxfordshire",
+            "metadata": {
+              "Life event": "Moved to Oxford, Oxfordshire",
+              "Start date": "2020-10-01"
+            },
+            "edges_out": [
+              {
+                "label": "attachment",
+                "to_entity": "Oxford, Oxfordshire",
+                "to_entity_type": "place"
+              }
+            ]
+          },
+          {
+            "where": {
+              "ts": 1681412316000,
+              "classification": "social"
+            },
             "count": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-post-life-event-end-date",
+      "source": "facebook",
+      "entity": "post",
+      "subtype": "life event exported twice: once for the start, once for the end (end_date set), same title",
+      "why": "Facebook emits one timeline entry per boundary; both must survive as separate items at their own backdated time",
+      "select": {
+        "posts": [
+          185,
+          186
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1622494800000,
+              "classification": "social"
+            },
+            "count": 1,
+            "data_text_contains": "Research Assistant",
+            "metadata": {
+              "Start date": "2021-05-31"
+            }
+          },
+          {
+            "where": {
+              "ts": 1677578400000,
+              "classification": "social"
+            },
+            "count": 1,
+            "data_text_contains": "Research Assistant",
+            "metadata": {
+              "Start date": "2021-05-31",
+              "End date": "2023-02-28"
+            },
+            "edges_out": [
+              {
+                "label": "attachment",
+                "to_entity": "Cardiff",
+                "to_entity_type": "place"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-post-event-attended",
+      "source": "facebook",
+      "entity": "post",
+      "subtype": "'was attending <event> at <place>' with own text",
+      "why": "event attachment carries name + start/end; the post keeps its own time and text, the event item spans the event's time",
+      "select": {
+        "posts": [
+          237
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1531775904000,
+              "classification": "social"
+            },
+            "count": 1,
+            "data_text_contains": "Nothing less of feeling alive!",
+            "edges_out": [
+              {
+                "label": "attachment",
+                "to_item": {
+                  "classification": "event",
+                  "data_text": "An Evening With Sam Harris, Jordan Peterson & Douglas Murray",
+                  "ts": 1531767600000,
+                  "timespan": 1531774800000
+                }
+              }
+            ]
           }
         ]
       }

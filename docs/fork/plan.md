@@ -25,7 +25,7 @@
 Details per topic: `link-fetching.md`, `immich-media-store.md`, `backlog.md`, `exports.md`; commands in `README.md`.
 
 ## Testing pipeline (2026-08-30) — see `testing.md`
-`testdata/meta/cases.json` (68 cases over posts / stories / messages / places / albums, with expectations) →
+`testdata/meta/cases.json` (75 cases over posts / stories / messages / places / albums, with expectations) →
 `scripts/build-testing-data.py` (mini export under `testing-data/`) → `go test ./tests/meta` (real pipeline, ~4 s) and
 `scripts/dev-reset.sh` + `tests/ui` Playwright (item pages with the `?debug=1` panel, conversations). First run found 7
 bugs (backlog #18–#24).
