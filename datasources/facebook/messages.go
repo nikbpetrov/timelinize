@@ -45,25 +45,9 @@ func GetMessages(ctx context.Context, dsName string, dirEntry timeline.DirEntry,
 		messagesInboxPrefix = pre2024MessagesPrefix
 	}
 
-	// messages imported per thread folder (threads may span several message_N.json files)
-	threadMsgCounts := make(map[string]int)
-
-	// share-link statistics for the end-of-import summary
-	stats := shareStats{byKind: make(map[string]int), byMsgKind: make(map[string]int)}
-
-	// optional link resolver (downloads shared reels/posts with the user's cookies)
-	var resolver *linkfetch.Resolver
-	if params.LinkFetch != nil && params.LinkFetch.Enabled {
-		var err error
-		resolver, err = linkfetch.New(*params.LinkFetch, params.Log.Named("link_fetch"))
-		if err != nil {
-			return fmt.Errorf("setting up link fetching: %w", err)
-		}
-		params.Log.Info("link fetching enabled",
-			zap.String("cache_dir", params.LinkFetch.CacheDir),
-			zap.Int("max_per_import", params.LinkFetch.MaxPerImport),
-			zap.Int("delay_ms", params.LinkFetch.DelayMS),
-			zap.Bool("cookies", params.LinkFetch.Cookies[dsName] != ""))
+	w, err := newMessageWalker(ctx, dsName, dirEntry, params, filters, mctx)
+	if err != nil {
+		return err
 	}
 
 	for _, messageSubfolder := range []string{
@@ -100,182 +84,7 @@ func GetMessages(ctx context.Context, dsName string, dirEntry timeline.DirEntry,
 			if err := json.NewDecoder(file).Decode(&thread); err != nil {
 				return err
 			}
-			threadMeta := thread.metadata(dsName, threadPath, mctx.OwnerName)
-			pseudo := collectPseudoReactions(thread.Messages)
-
-			for _, msg := range thread.Messages {
-				if filters.MaxMessagesPerConversation > 0 && threadMsgCounts[threadPath] >= filters.MaxMessagesPerConversation {
-					break
-				}
-				threadMsgCounts[threadPath]++
-
-				if err := ctx.Err(); err != nil {
-					return err
-				}
-				if params.Continue != nil {
-					if err := params.Continue(); err != nil {
-						return err
-					}
-				}
-
-				senderName := FixString(msg.SenderName)
-				sender := participantEntity(dsName, senderName, threadPath)
-				msgText := FixString(msg.Content)
-				msgTimestamp := time.UnixMilli(msg.TimestampMS).UTC()
-
-				// what is this message? (call, group event, placeholder, link, ... — classify.go)
-				cls := classifyMessage(msg, msgText)
-				stats.byMsgKind[string(cls.Kind)]++
-				if cls.dropped() {
-					continue
-				}
-				if cls.Kind == kindPlaceholder {
-					// Meta substitutes "<Name> sent an attachment." for messages whose real
-					// content is the attachment or share; that is not something the sender typed
-					msgText = ""
-					stats.placeholdersDropped++
-				}
-				if cls.Kind == kindLink && msg.Share.isEmpty() {
-					// a message that is exactly one URL: the text stays, and the URL gets the
-					// same bookmark treatment as a share
-					msg.Share.Link = cls.URL
-				}
-
-				attachments, expiredLinks, missing := messageAttachments(msg, sender, dirEntry, msgTimestamp, params.Log)
-
-				// A shared post/reel/story/profile becomes its own bookmark item attached to the
-				// message (or, for the owner's own story, a "quotes" edge to the imported story),
-				// never text on the message: share_text is the *other* author's caption.
-				var bookmark, quoted *timeline.Item
-				var fetchedMedia []*timeline.Item
-				if !msg.Share.isEmpty() && cls.Kind != kindLocation {
-					canonical := canonicalShareURL(msg.Share.url(dsName))
-					kind := classifyShareURL(canonical)
-					status := shareStatusUnresolved
-					if kind == shareKindStory {
-						status = shareStatusExpired // stories live 24 h; only the owner's own are in the export
-						if user, mediaID, ok := storyLink(canonical); ok && mctx.OwnStory != nil &&
-							mctx.OwnerUsername != "" && user == mctx.OwnerUsername {
-							quoted = mctx.OwnStory(instagramMediaIDTime(mediaID))
-						}
-					}
-					if quoted != nil {
-						stats.ownStoriesMatched++
-					} else {
-						if status != shareStatusExpired {
-							// kinds that are never fetched are terminal right away, resolver or not
-							if backend, terminal := linkfetch.Route(linkfetch.Request{URL: canonical, Kind: kind, Site: dsName}); backend == linkfetch.BackendNone && terminal != "" {
-								status = terminal
-							}
-						}
-						bookmark = msg.Share.bookmarkItem(dsName, canonical, kind, status, msgTimestamp)
-						if resolver != nil && status == shareStatusUnresolved {
-							fetched, err := resolveShare(ctx, resolver, dsName, canonical, kind, msgTimestamp)
-							if err != nil {
-								return err
-							}
-							bookmark.Metadata["Status"] = fetched.Status
-							if fetched.Status == linkfetch.StatusResolved {
-								bookmark.Metadata["Fetched with"] = fetched.Backend
-							}
-							if fetched.Error != "" {
-								bookmark.Metadata["Fetch error"] = fetched.Error
-							}
-							status = fetched.Status
-							fetchedMedia = fetched.Items
-						}
-					}
-					stats.byKind[kind]++
-					params.Log.Debug("share link in message",
-						zap.String("thread", threadPath),
-						zap.Time("timestamp", msgTimestamp),
-						zap.String("url", canonical),
-						zap.String("kind", kind),
-						zap.String("status", status),
-						zap.Bool("own_story_matched", quoted != nil))
-				}
-
-				// keep only what the sender actually typed (a message may legitimately
-				// contain the link in its text too; that is the sender's, so it stays)
-				msgText = strings.TrimSpace(msgText)
-
-				var item *timeline.Item
-				switch {
-				case msgText != "":
-					item = &timeline.Item{
-						Classification: timeline.ClassMessage,
-						Timestamp:      msgTimestamp,
-						Owner:          sender,
-						Content: timeline.ItemData{
-							Data: timeline.StringData(msgText),
-						},
-					}
-				case len(attachments) > 0:
-					item, attachments = attachments[0], attachments[1:]
-				case bookmark != nil || quoted != nil || len(expiredLinks) > 0:
-					// the message consists solely of a share: represent it as an empty message
-					// (kept by the pipeline because it has relationships) so it still shows up
-					// in the conversation at the right time, owned by the sender
-					item = &timeline.Item{
-						Classification: timeline.ClassMessage,
-						Timestamp:      msgTimestamp,
-						Owner:          sender,
-					}
-				default:
-					// found an empty message; I've seen this happen rarely,
-					// like if a message IsUnsent; no content, so skip
-					continue
-				}
-
-				if item.Metadata == nil {
-					item.Metadata = make(timeline.Metadata)
-				}
-				for k, v := range threadMeta {
-					item.Metadata[k] = v
-				}
-				cls.annotate(item, msgTimestamp)
-				if msg.IP != "" {
-					item.Metadata["IP"] = msg.IP
-				}
-				if missing > 0 {
-					item.Metadata["Missing attachments"] = missing
-				}
-
-				ig := &timeline.Graph{Item: item}
-
-				for _, attach := range attachments {
-					ig.ToItem(timeline.RelAttachment, attach)
-				}
-				for _, expired := range expiredLinks {
-					ig.ToItem(timeline.RelAttachment, expired)
-				}
-				if bookmark != nil {
-					bg := &timeline.Graph{Item: bookmark}
-					for _, media := range fetchedMedia {
-						bg.ToItem(timeline.RelAttachment, media)
-					}
-					ig.Edges = append(ig.Edges, timeline.Relationship{Relation: timeline.RelAttachment, To: bg})
-				}
-				if quoted != nil {
-					ig.ToItem(timeline.RelQuotes, quoted)
-				}
-				for _, recipient := range thread.sentTo(sender, dsName, threadPath) {
-					ig.ToEntity(timeline.RelSent, recipient)
-				}
-				for _, reaction := range msg.Reactions {
-					actor := participantEntity(dsName, FixString(reaction.Actor), threadPath)
-					ig.FromEntityWithValue(&actor, timeline.RelReacted, FixString(reaction.Reaction))
-					// the export also emits a "Reacted X to your message" pseudo-message from the
-					// actor (dropped above); its timestamp is when the reaction happened
-					if t, ok := pseudo.timeOf(FixString(reaction.Actor), msg.TimestampMS); ok {
-						ig.Edges[len(ig.Edges)-1].Start = &t
-					}
-				}
-
-				params.Pipeline <- ig
-			}
-
-			return nil
+			return w.processThread(thread, threadPath)
 		})
 		// since we try different folders above, ignore NotExist since some just might not exist in the archive
 		if err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -283,19 +92,247 @@ func GetMessages(ctx context.Context, dsName string, dirEntry timeline.DirEntry,
 		}
 	}
 
-	summary := []zap.Field{
-		zap.String("data_source", dsName),
-		zap.Any("by_message_kind", stats.byMsgKind),
-		zap.Any("by_kind", stats.byKind),
-		zap.Int("placeholders_dropped", stats.placeholdersDropped),
-		zap.Int("own_stories_matched", stats.ownStoriesMatched),
+	w.summary()
+	return nil
+}
+
+// messageWalker holds what every thread of an import shares: the archive, the import
+// params, the optional link resolver and the running statistics. Both export layouts
+// (the main export's message_N.json threads and the E2EE export) feed processThread.
+type messageWalker struct {
+	ctx      context.Context
+	dsName   string
+	dirEntry timeline.DirEntry
+	params   timeline.ImportParams
+	filters  Filters
+	mctx     MessageContext
+
+	threadMsgCounts map[string]int
+	stats           shareStats
+	resolver        *linkfetch.Resolver
+}
+
+func newMessageWalker(ctx context.Context, dsName string, dirEntry timeline.DirEntry, params timeline.ImportParams, filters Filters, mctx MessageContext) (*messageWalker, error) {
+	w := &messageWalker{ctx: ctx, dsName: dsName, dirEntry: dirEntry, params: params, filters: filters, mctx: mctx}
+	// messages imported per thread folder (threads may span several message_N.json files)
+	w.threadMsgCounts = make(map[string]int)
+
+	// share-link statistics for the end-of-import summary
+	w.stats = shareStats{byKind: make(map[string]int), byMsgKind: make(map[string]int)}
+
+	// optional link w.resolver (downloads shared reels/posts with the user's cookies)
+	if params.LinkFetch != nil && params.LinkFetch.Enabled {
+		var err error
+		w.resolver, err = linkfetch.New(*params.LinkFetch, params.Log.Named("link_fetch"))
+		if err != nil {
+			return nil, fmt.Errorf("setting up link fetching: %w", err)
+		}
+		params.Log.Info("link fetching enabled",
+			zap.String("cache_dir", params.LinkFetch.CacheDir),
+			zap.Int("max_per_import", params.LinkFetch.MaxPerImport),
+			zap.Int("delay_ms", params.LinkFetch.DelayMS),
+			zap.Bool("cookies", params.LinkFetch.Cookies[dsName] != ""))
 	}
-	if resolver != nil {
-		summary = append(summary, zap.Any("link_fetch", resolver.Stats()))
+
+	return w, nil
+}
+
+// processThread imports the messages of one thread. threadPath identifies the thread
+// ("inbox/somebody_123", or "e2ee/<Name>_<n>" for the E2EE export) and is what anonymous
+// participants are keyed by.
+func (w *messageWalker) processThread(thread fbMessengerThread, threadPath string) error {
+	threadMeta := thread.metadata(w.dsName, threadPath, w.mctx.OwnerName)
+	pseudo := collectPseudoReactions(thread.Messages)
+
+	for _, msg := range thread.Messages {
+		if w.filters.MaxMessagesPerConversation > 0 && w.threadMsgCounts[threadPath] >= w.filters.MaxMessagesPerConversation {
+			break
+		}
+		w.threadMsgCounts[threadPath]++
+
+		if err := w.ctx.Err(); err != nil {
+			return err
+		}
+		if w.params.Continue != nil {
+			if err := w.params.Continue(); err != nil {
+				return err
+			}
+		}
+
+		senderName := FixString(msg.SenderName)
+		sender := participantEntity(w.dsName, senderName, threadPath)
+		msgText := FixString(msg.Content)
+		msgTimestamp := time.UnixMilli(msg.TimestampMS).UTC()
+
+		// what is this message? (call, group event, placeholder, link, ... — classify.go)
+		cls := classifyMessage(msg, msgText)
+		w.stats.byMsgKind[string(cls.Kind)]++
+		if cls.dropped() {
+			continue
+		}
+		if cls.Kind == kindPlaceholder {
+			// Meta substitutes "<Name> sent an attachment." for messages whose real
+			// content is the attachment or share; that is not something the sender typed
+			msgText = ""
+			w.stats.placeholdersDropped++
+		}
+		if cls.Kind == kindLink && msg.Share.isEmpty() {
+			// a message that is exactly one URL: the text stays, and the URL gets the
+			// same bookmark treatment as a share
+			msg.Share.Link = cls.URL
+		}
+
+		attachments, expiredLinks, missing := messageAttachments(msg, sender, w.dirEntry, msgTimestamp, w.params.Log)
+
+		// A shared post/reel/story/profile becomes its own bookmark item attached to the
+		// message (or, for the owner's own story, a "quotes" edge to the imported story),
+		// never text on the message: share_text is the *other* author's caption.
+		var bookmark, quoted *timeline.Item
+		var fetchedMedia []*timeline.Item
+		if !msg.Share.isEmpty() && cls.Kind != kindLocation {
+			canonical := canonicalShareURL(msg.Share.url(w.dsName))
+			kind := classifyShareURL(canonical)
+			status := shareStatusUnresolved
+			if kind == shareKindStory {
+				status = shareStatusExpired // stories live 24 h; only the owner's own are in the export
+				if user, mediaID, ok := storyLink(canonical); ok && w.mctx.OwnStory != nil &&
+					w.mctx.OwnerUsername != "" && user == w.mctx.OwnerUsername {
+					quoted = w.mctx.OwnStory(instagramMediaIDTime(mediaID))
+				}
+			}
+			if quoted != nil {
+				w.stats.ownStoriesMatched++
+			} else {
+				if status != shareStatusExpired {
+					// kinds that are never fetched are terminal right away, w.resolver or not
+					if backend, terminal := linkfetch.Route(linkfetch.Request{URL: canonical, Kind: kind, Site: w.dsName}); backend == linkfetch.BackendNone && terminal != "" {
+						status = terminal
+					}
+				}
+				bookmark = msg.Share.bookmarkItem(w.dsName, canonical, kind, status, msgTimestamp)
+				if w.resolver != nil && status == shareStatusUnresolved {
+					fetched, err := resolveShare(w.ctx, w.resolver, w.dsName, canonical, kind, msgTimestamp)
+					if err != nil {
+						return err
+					}
+					bookmark.Metadata["Status"] = fetched.Status
+					if fetched.Status == linkfetch.StatusResolved {
+						bookmark.Metadata["Fetched with"] = fetched.Backend
+					}
+					if fetched.Error != "" {
+						bookmark.Metadata["Fetch error"] = fetched.Error
+					}
+					status = fetched.Status
+					fetchedMedia = fetched.Items
+				}
+			}
+			w.stats.byKind[kind]++
+			w.params.Log.Debug("share link in message",
+				zap.String("thread", threadPath),
+				zap.Time("timestamp", msgTimestamp),
+				zap.String("url", canonical),
+				zap.String("kind", kind),
+				zap.String("status", status),
+				zap.Bool("own_story_matched", quoted != nil))
+		}
+
+		// keep only what the sender actually typed (a message may legitimately
+		// contain the link in its text too; that is the sender's, so it stays)
+		msgText = strings.TrimSpace(msgText)
+
+		var item *timeline.Item
+		switch {
+		case msgText != "":
+			item = &timeline.Item{
+				Classification: timeline.ClassMessage,
+				Timestamp:      msgTimestamp,
+				Owner:          sender,
+				Content: timeline.ItemData{
+					Data: timeline.StringData(msgText),
+				},
+			}
+		case len(attachments) > 0:
+			item, attachments = attachments[0], attachments[1:]
+		case bookmark != nil || quoted != nil || len(expiredLinks) > 0:
+			// the message consists solely of a share: represent it as an empty message
+			// (kept by the pipeline because it has relationships) so it still shows up
+			// in the conversation at the right time, owned by the sender
+			item = &timeline.Item{
+				Classification: timeline.ClassMessage,
+				Timestamp:      msgTimestamp,
+				Owner:          sender,
+			}
+		default:
+			// found an empty message; I've seen this happen rarely,
+			// like if a message IsUnsent; no content, so skip
+			continue
+		}
+
+		if item.Metadata == nil {
+			item.Metadata = make(timeline.Metadata)
+		}
+		for k, v := range threadMeta {
+			item.Metadata[k] = v
+		}
+		cls.annotate(item, msgTimestamp)
+		if msg.IP != "" {
+			item.Metadata["IP"] = msg.IP
+		}
+		if missing > 0 {
+			item.Metadata["Missing attachments"] = missing
+		}
+
+		ig := &timeline.Graph{Item: item}
+
+		for _, attach := range attachments {
+			ig.ToItem(timeline.RelAttachment, attach)
+		}
+		for _, expired := range expiredLinks {
+			ig.ToItem(timeline.RelAttachment, expired)
+		}
+		if bookmark != nil {
+			bg := &timeline.Graph{Item: bookmark}
+			for _, media := range fetchedMedia {
+				bg.ToItem(timeline.RelAttachment, media)
+			}
+			ig.Edges = append(ig.Edges, timeline.Relationship{Relation: timeline.RelAttachment, To: bg})
+		}
+		if quoted != nil {
+			ig.ToItem(timeline.RelQuotes, quoted)
+		}
+		for _, recipient := range thread.sentTo(sender, w.dsName, threadPath) {
+			ig.ToEntity(timeline.RelSent, recipient)
+		}
+		for _, reaction := range msg.Reactions {
+			actor := participantEntity(w.dsName, FixString(reaction.Actor), threadPath)
+			ig.FromEntityWithValue(&actor, timeline.RelReacted, FixString(reaction.Reaction))
+			// the export also emits a "Reacted X to your message" pseudo-message from the
+			// actor (dropped above); its timestamp is when the reaction happened
+			if t, ok := pseudo.timeOf(FixString(reaction.Actor), msg.TimestampMS); ok {
+				ig.Edges[len(ig.Edges)-1].Start = &t
+			}
+		}
+
+		w.params.Pipeline <- ig
 	}
-	params.Log.Info("messages: share links summary", summary...)
 
 	return nil
+}
+
+// summary logs the per-kind counts at the end of an import.
+func (w *messageWalker) summary() {
+	summary := []zap.Field{
+		zap.String("data_source", w.dsName),
+		zap.Any("by_message_kind", w.stats.byMsgKind),
+		zap.Any("by_kind", w.stats.byKind),
+		zap.Int("placeholders_dropped", w.stats.placeholdersDropped),
+		zap.Int("own_stories_matched", w.stats.ownStoriesMatched),
+	}
+	if w.resolver != nil {
+		summary = append(summary, zap.Any("link_fetch", w.resolver.Stats()))
+	}
+	w.params.Log.Info("messages: share links summary", summary...)
+
 }
 
 type shareStats struct {

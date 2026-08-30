@@ -29,6 +29,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/timelinize/timelinize/datasources/media"
 	"github.com/timelinize/timelinize/internal/linkfetch"
@@ -78,6 +79,9 @@ func (Archive) Recognize(_ context.Context, dirEntry timeline.DirEntry, _ timeli
 		dirEntry.FileExists(year2024ProfileInfoPath) {
 		return timeline.Recognition{Confidence: 1}, nil
 	}
+	if isE2EEExport(dirEntry) {
+		return timeline.Recognition{Confidence: .95}, nil
+	}
 	if dirEntry.FileExists("your_facebook_activity") {
 		return timeline.Recognition{Confidence: .95}, nil
 	}
@@ -90,6 +94,12 @@ func (Archive) Recognize(_ context.Context, dirEntry timeline.DirEntry, _ timeli
 // FileImport imports the data in the file.
 func (a Archive) FileImport(ctx context.Context, dirEntry timeline.DirEntry, params timeline.ImportParams) error {
 	dsOpt := params.DataSourceOptions.(*Options)
+
+	// the separate end-to-end-encrypted Messenger export has its own layout (no profile,
+	// no posts); it only contains messages
+	if isE2EEExport(dirEntry) {
+		return a.importE2EE(ctx, dirEntry, params, dsOpt)
+	}
 
 	if err := a.setOwnerEntity(ctx, dirEntry, dsOpt); err != nil {
 		return err
@@ -859,14 +869,21 @@ func (a *Archive) setOwnerEntity(ctx context.Context, d timeline.DirEntry, optio
 //
 // TODO: what should we do in case of an error? continue, or would the whole string be malformed after?
 func FixString(malformed string) string {
+	// Mojibake only ever contains runes <= 255 (UTF-8 bytes written as Latin-1 characters);
+	// anything above that means the string is already proper UTF-8 (e.g. the E2EE export,
+	// or emoji in reactions) and must be left alone.
 	const maxByte = 255
-	asRunes := []rune(malformed)
-	final := make([]byte, len(asRunes))
-	for i, r := range asRunes {
+	for _, r := range malformed {
 		if r > maxByte {
-			continue // TODO: FIXME: Is this the best thing to do? Would the rest of the string be corrupted?
+			return malformed
 		}
-		final[i] = byte(r)
+	}
+	final := make([]byte, 0, len(malformed))
+	for _, r := range malformed {
+		final = append(final, byte(r))
+	}
+	if !utf8.Valid(final) {
+		return malformed // genuine Latin-1 text (e.g. "café" in a proper UTF-8 export), not mojibake
 	}
 	return string(final)
 }

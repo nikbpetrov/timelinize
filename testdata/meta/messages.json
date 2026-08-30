@@ -2597,6 +2597,308 @@
           }
         ]
       }
+    },
+    {
+      "id": "fb-e2ee-text",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "E2EE export: plain text message (camelCase layout, separate import root)",
+      "why": "data_messenger_e2e/ is a second export with its own schema; it continues the e2ee_cutover threads",
+      "select": {
+        "e2ee": [
+          {
+            "file": "Anelia Chekakchieva_40.json",
+            "ts": [
+              1746073791906
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1746073791906
+            },
+            "count": 1,
+            "classification": "message",
+            "data_text": "Благодаря <3",
+            "owner": "Nikolay Petrov",
+            "edges_out": [
+              {
+                "label": "sent",
+                "to_entity": "Anelia Chekakchieva"
+              }
+            ],
+            "edges_out_count": {
+              "sent": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-e2ee-link",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "E2EE export: type=link (text is the URL) → text kept + bookmark",
+      "select": {
+        "e2ee": [
+          {
+            "file": "Anelia Chekakchieva_40.json",
+            "ts": [
+              1745939437363
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1745939437363,
+              "classification": "message"
+            },
+            "count": 1,
+            "owner": "Anelia Chekakchieva",
+            "data_text_contains": "facebook.com/stories",
+            "edges_out": [
+              {
+                "label": "attachment",
+                "to_item": {
+                  "classification": "bookmark",
+                  "data_text_contains": "facebook.com/stories"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-e2ee-media-photo",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "E2EE export: type=media with a ./media/<uuid>.jpeg file",
+      "select": {
+        "e2ee": [
+          {
+            "file": "Anelia Chekakchieva_40.json",
+            "ts": [
+              1763050838383
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1763050838383
+            },
+            "count": 1,
+            "classification": "message",
+            "data_file": ".jpeg",
+            "data_type_prefix": "image/",
+            "owner": "Nikolay Petrov"
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-e2ee-voice-mp4",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "E2EE export: voice note in an .mp4 container (audio only) — typed audio/, dated by the file's own creation_time",
+      "select": {
+        "e2ee": [
+          {
+            "file": "Yoanna Petrova_57.json",
+            "ts": [
+              1720684394923
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "data_file": "8abd2499-0215-4fbd-9456-b3306872fd30.mp4"
+            },
+            "count": 1,
+            "data_type_prefix": "audio/",
+            "owner": "Nikolay Petrov"
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-e2ee-voice-note",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "E2EE export: .ogg voice note",
+      "select": {
+        "e2ee": [
+          {
+            "file": "Станислав Рангелов_47.json",
+            "ts": [
+              1768729391899
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1768729391899
+            },
+            "count": 1,
+            "data_file": ".ogg",
+            "data_type_prefix": "audio/"
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-e2ee-failed-media",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "E2EE export: media uri is the literal 'Failed to download media'",
+      "select": {
+        "e2ee": [
+          {
+            "file": "Neli Gergova_17.json",
+            "ts": [
+              1707040144441
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1707040144441,
+              "has_file": true
+            },
+            "count": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-e2ee-placeholder-unsent",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "E2EE export: type=placeholder 'User unsent a message' (isUnsent) — dropped",
+      "select": {
+        "e2ee": [
+          {
+            "file": "Blagovesta Dlagatseva_27.json",
+            "ts": [
+              1729801020288
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1729801020288
+            },
+            "count": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-e2ee-reaction",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "E2EE export: reactions[] (own ❤ on their message)",
+      "select": {
+        "e2ee": [
+          {
+            "file": "Vania Valt Eva_75.json",
+            "all": true
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1733491148481
+            },
+            "count": 1,
+            "owner": "Vania Valt Eva",
+            "edges_in": [
+              {
+                "label": "reacted",
+                "from_entity": "Nikolay Petrov",
+                "value": "❤"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "fb-e2ee-continues-cutover",
+      "source": "facebook",
+      "entity": "message",
+      "subtype": "the same person's thread across both exports: last e2ee_cutover message and first E2EE message share the entities",
+      "select": {
+        "messages": [
+          {
+            "thread": "e2ee_cutover/aneliachekakchieva_890711401007937",
+            "ts": [
+              1717415147928
+            ]
+          }
+        ],
+        "e2ee": [
+          {
+            "file": "Anelia Chekakchieva_40.json",
+            "ts": [
+              1746073791906
+            ]
+          }
+        ]
+      },
+      "expect": {
+        "items": [
+          {
+            "where": {
+              "ts": 1717415147928
+            },
+            "count": 1,
+            "owner": "Nikolay Petrov",
+            "edges_out": [
+              {
+                "label": "sent",
+                "to_entity": "Anelia Chekakchieva"
+              }
+            ]
+          },
+          {
+            "where": {
+              "ts": 1746073791906
+            },
+            "count": 1,
+            "owner": "Nikolay Petrov",
+            "edges_out": [
+              {
+                "label": "sent",
+                "to_entity": "Anelia Chekakchieva"
+              }
+            ]
+          }
+        ]
+      }
     }
   ],
   "checks": [
@@ -2655,6 +2957,11 @@
     {
       "id": "no-system-sentences-as-plain-messages",
       "sql": "select count(*) from items i join classifications c on c.id=i.classification_id where c.name='message' and (i.data_text like '% added % to the group.' or i.data_text like '% left the group.' or i.data_text like '% named the group %' or i.data_text like 'Reacted % to your message%' or i.data_text like '% set the nickname for %' or i.data_text like '% sent an attachment.') and (i.metadata is null or json_extract(i.metadata,'$.Kind') is null)",
+      "expect": 0
+    },
+    {
+      "id": "one-entity-per-named-person",
+      "sql": "select count(*) from (select a.value from entities e join entity_attributes ea on ea.entity_id=e.id join attributes a on a.id=ea.attribute_id where a.name='facebook_name' group by a.value having count(distinct e.id) > 1)",
       "expect": 0
     }
   ]

@@ -20,10 +20,15 @@ var threadIDRegex = regexp.MustCompile(`(\d+)$`)
 // ("inbox/somebody_123" -> "123", "inbox/123" -> "123"). Falls back to the folder name.
 func threadID(threadPath string) string {
 	base := path.Base(threadPath)
+	id := base
 	if m := threadIDRegex.FindStringSubmatch(base); m != nil {
-		return m[1]
+		id = m[1]
 	}
-	return base
+	if strings.HasPrefix(threadPath, "e2ee/") {
+		// the E2EE export numbers its threads from 1; keep them apart from the main export's ids
+		return "e2ee-" + id
+	}
+	return id
 }
 
 // isAnonymousName reports whether a participant/sender name is one of Meta's placeholders

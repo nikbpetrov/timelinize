@@ -416,11 +416,19 @@ func (p *processor) downloadDataFile(it *Item, source io.Reader, destination *os
 		// voice notes from messengers are audio-only MP4/MOV containers that byte-sniffing
 		// reports as video; probe the streams so they are typed as audio (no video thumbnail
 		// attempts, not uploaded to Immich, rendered with an audio player)
-		if it.Content.MediaType == "video/mp4" || it.Content.MediaType == "video/quicktime" {
+		switch it.Content.MediaType {
+		case "video/mp4", "video/quicktime":
 			if audioOnlyContainer(destination.Name()) {
 				p.log.Debug("audio-only container; typing as audio",
 					zap.String("data_file", it.dataFilePath), zap.String("sniffed", it.Content.MediaType))
 				it.Content.MediaType = "audio/mp4"
+			}
+		case "application/ogg":
+			// Ogg is sniffed as a generic container; Messenger's E2EE voice notes are Opus/Vorbis in Ogg
+			if audioOnlyContainer(destination.Name()) {
+				it.Content.MediaType = "audio/ogg"
+			} else {
+				it.Content.MediaType = "video/ogg"
 			}
 		}
 
